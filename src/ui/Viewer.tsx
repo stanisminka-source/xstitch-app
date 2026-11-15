@@ -8,7 +8,7 @@ import { blockCells, lineCells, patchCells, percent, Progress, type Op } from '.
 import { BackupError, backupFileName, emptyMeta, logDelta, makeBackup, mergeDays, normalizeMeta, readBackup, REMIND_EVERY, type Meta } from '../progress/backup';
 import { ProgressSheet } from './ProgressSheet';
 import { AreaSheet } from './AreaSheet';
-import { areaCounts, areaMask, defaultChoice, sheetsOf, snapRect, type FabricChoice, type Rect } from '../pattern/threads';
+import { areaCounts, areaMask, compareCodes, defaultChoice, sheetsOf, snapRect, type FabricChoice, type Rect } from '../pattern/threads';
 
 /** Что выбрано для расчёта ниток: целые листы и обведённые участки, в порядке добавления. */
 type AreaItem = { kind: 'sheet'; page: number } | { kind: 'rect'; rect: Rect };
@@ -437,7 +437,7 @@ export function Viewer({ stored, settings, dark, env, onSettings, onImport, onOp
   const order = useMemo(() => {
     const idx = palette.map((_, i) => i);
     if (settings.threadSort === 'count') return idx.sort((a, b) => palette[b].count - palette[a].count);
-    return idx.sort((a, b) => codeKey(palette[a].code) - codeKey(palette[b].code) || palette[a].code.localeCompare(palette[b].code));
+    return idx.sort((a, b) => compareCodes(palette[a].code, palette[b].code));
   }, [palette, settings.threadSort]);
 
   const toggleSheet = (s: SheetName) => setSheet((cur) => (cur === s ? null : s));
@@ -615,6 +615,8 @@ export function Viewer({ stored, settings, dark, env, onSettings, onImport, onOp
             palette={palette}
             symbols={symbols}
             fabric={fabric}
+            sort={settings.threadSort}
+            onSort={(threadSort) => onSettings({ threadSort })}
             onPick={(k) => {
               choose(k);
               setSheet(null);
@@ -739,11 +741,6 @@ export function Viewer({ stored, settings, dark, env, onSettings, onImport, onOp
       </footer>
     </div>
   );
-}
-
-function codeKey(code: string): number {
-  const n = parseInt(code, 10);
-  return Number.isNaN(n) ? -1 : n;
 }
 
 function ToolButton(p: { icon: string; label: string; active: boolean; onClick(): void }) {

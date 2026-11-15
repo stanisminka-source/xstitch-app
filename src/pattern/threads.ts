@@ -2,6 +2,15 @@
 
 import type { Pattern, Sheet } from './format';
 
+/** Порядок номеров ниток: 150, 152, 310 … 3865 (числа по значению, а не как строки). */
+export function compareCodes(a: string, b: string): number {
+  const na = parseInt(a, 10);
+  const nb = parseInt(b, 10);
+  const ka = Number.isNaN(na) ? -1 : na;
+  const kb = Number.isNaN(nb) ? -1 : nb;
+  return ka - kb || a.localeCompare(b);
+}
+
 export interface FabricOption {
   id: string;
   label: string;

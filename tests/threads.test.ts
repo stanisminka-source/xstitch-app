@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { areaCounts, areaMask, defaultChoice, recommendedStrands, sheetsOf, skeinsToBuy, snapRect } from '../src/pattern/threads';
+import { areaCounts, areaMask, compareCodes, defaultChoice, recommendedStrands, sheetsOf, skeinsToBuy, snapRect } from '../src/pattern/threads';
 import type { Pattern } from '../src/pattern/format';
 
 describe('Расход ниток', () => {
@@ -51,5 +51,12 @@ describe('Участок схемы', () => {
       { k: 0, total: 3, left: 2 },
       { k: 1, total: 2, left: 2 },
     ]);
+  });
+});
+
+describe('Порядок номеров', () => {
+  it('номера по возрастанию как числа, буквенные — в начале', () => {
+    const codes = ['3865', '310', 'Blanc', '150', '3799', '890', 'Ecru', '152'];
+    expect([...codes].sort(compareCodes)).toEqual(['Blanc', 'Ecru', '150', '152', '310', '890', '3799', '3865']);
   });
 });
