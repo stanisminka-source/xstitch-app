@@ -242,7 +242,7 @@ export class SchemeRenderer {
     const { dim, mode } = this.style;
     const base = mode === 'stitched' ? FABRIC : WHITE;
     this.base = base;
-    this.fadeRgb = mix(base, [150, 148, 144], 0.2);
+    this.fadeRgb = mix(base, [150, 148, 144], 0.5); // заметно серые — не путать с пустой канвой
     const tint = this.rgb.map((c) => mix(c, base, TINT));
     this.shades = {
       full: shadeSet(this.rgb),
