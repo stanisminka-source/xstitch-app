@@ -125,7 +125,6 @@ export function App() {
     <input
       ref={fileRef}
       type="file"
-      accept=".json,application/json,text/plain"
       hidden
       onChange={(e) => {
         const f = (e.currentTarget as HTMLInputElement).files?.[0];
