@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { BackupError, backupFileName, emptyMeta, logDelta, makeBackup, mergeDays, normalizeMeta, packBits, readBackup, unpackBits } from '../src/progress/backup';
 
-const P = { id: 'pabc', title: 'Hogwarts by the Crystal Lake (100 colours)', width: 7, height: 3 };
+const P = { id: 'pabc', title: 'Sunflower Garden (100 colours)', width: 7, height: 3 };
 
 describe('Копия прогресса', () => {
   it('отметки упаковываются по биту и читаются обратно без потерь', () => {
@@ -22,7 +22,7 @@ describe('Копия прогресса', () => {
 
   it('не принимает копию от другой схемы, файл схемы и мусор', () => {
     const file = makeBackup(P, new Uint8Array(21), 0, {});
-    expect(() => readBackup(file, { ...P, id: 'other' })).toThrow(/другой схемы.*Hogwarts/);
+    expect(() => readBackup(file, { ...P, id: 'other' })).toThrow(/другой схемы.*Sunflower/);
     expect(() => readBackup({ cells: [], palette: [] }, P)).toThrow(/файл схемы/);
     expect(() => readBackup(42, P)).toThrow(BackupError);
     expect(() => readBackup({ ...file, done: 'AA==' }, P)).toThrow(/повреждён/);
@@ -44,6 +44,6 @@ describe('Копия прогресса', () => {
   });
 
   it('имя файла понятное, без «(100 colours)»', () => {
-    expect(backupFileName(P.title, new Date(2026, 10, 15))).toBe('Hogwarts-by-the-Crystal-Lake-прогресс-2026-11-15.json');
+    expect(backupFileName(P.title, new Date(2026, 10, 15))).toBe('Sunflower-Garden-прогресс-2026-11-15.json');
   });
 });

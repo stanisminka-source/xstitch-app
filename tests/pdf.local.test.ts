@@ -1,16 +1,16 @@
-// Сверка разбора PDF Хогвартса с готовым JSON. Файлы лежат только на компьютере владелицы
+// Сверка разбора PDF настоящей схемы с готовым JSON. Файлы лежат только на компьютере владелицы
 // (в репозиторий не попадают), поэтому без них тест пропускается.
-import { existsSync, readFileSync } from 'node:fs';
-import { homedir } from 'node:os';
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { parsePattern } from '../src/pattern/format';
 import { parsePatternPdf } from '../src/pattern/pdf';
+import { REAL_JSON, REAL_PDF, haveFile } from './localPaths';
 
-const PDF = `${homedir()}/Downloads/Hogwarts_100colors_Color.pdf`;
-const JSON_FILE = `${homedir()}/Downloads/xstitch-app-package/hogwarts.pattern.json`;
-const have = existsSync(PDF) && existsSync(JSON_FILE);
+const PDF = REAL_PDF;
+const JSON_FILE = REAL_JSON;
+const have = haveFile(PDF) && haveFile(JSON_FILE);
 
-describe.skipIf(!have)('PDF Хогвартса', () => {
+describe.skipIf(!have)('PDF настоящей схемы', () => {
   it('разбирается так же, как готовый JSON', async () => {
     const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
     const doc = await pdfjs.getDocument({ data: new Uint8Array(readFileSync(PDF)), verbosity: 0 }).promise;
