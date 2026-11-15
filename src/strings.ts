@@ -5,9 +5,11 @@ export const ru = {
 
   // загрузка схемы
   emptyTitle: 'Загрузите первую схему',
-  emptyText: 'Файл схемы в формате .json хранится только на этом устройстве.',
+  emptyText: 'Схема — файл .json или PDF из Pattern Maker. Она хранится только на этом устройстве.',
   importButton: 'Загрузить схему',
   importing: 'Загружаю схему…',
+  pdfReading: 'Открываю PDF…',
+  pdfPage: (n: number, total: number) => `Читаю PDF: страница ${n} из ${total}`,
   importError: 'Не получилось загрузить схему',
   loading: 'Открываю схему…',
 

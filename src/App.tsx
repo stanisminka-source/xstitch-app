@@ -86,8 +86,17 @@ export function App() {
     setError(null);
     setBusy(t.importing);
     try {
-      const raw = JSON.parse(await file.text());
-      if (raw?.format === 'smile-stitch-progress') throw new PatternError(t.progressNotPattern);
+      const head = new Uint8Array(await file.slice(0, 5).arrayBuffer());
+      const isPdf = String.fromCharCode(...head) === '%PDF-';
+      let raw;
+      if (isPdf) {
+        setBusy(t.pdfReading);
+        const { loadPdfPattern } = await import('./pattern/pdfLoad');
+        raw = await loadPdfPattern(await file.arrayBuffer(), (n, total) => setBusy(t.pdfPage(n, total)));
+      } else {
+        raw = JSON.parse(await file.text());
+        if (raw?.format === 'smile-stitch-progress') throw new PatternError(t.progressNotPattern);
+      }
       const pattern = parsePattern(raw);
       const id = patternId(pattern);
       const stored: StoredPattern = {
