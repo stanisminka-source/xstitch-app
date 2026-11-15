@@ -7,6 +7,11 @@ import { db, type StoredPattern } from '../store/db';
 import { blockCells, lineCells, patchCells, percent, Progress, type Op } from '../progress/progress';
 import { BackupError, backupFileName, emptyMeta, logDelta, makeBackup, mergeDays, normalizeMeta, readBackup, REMIND_EVERY, type Meta } from '../progress/backup';
 import { ProgressSheet } from './ProgressSheet';
+import { AreaSheet } from './AreaSheet';
+import { areaCounts, areaMask, defaultChoice, sheetsOf, snapRect, type FabricChoice, type Rect } from '../pattern/threads';
+
+/** Что выбрано для расчёта ниток: целые листы и обведённые участки, в порядке добавления. */
+type AreaItem = { kind: 'sheet'; page: number } | { kind: 'rect'; rect: Rect };
 import type { Settings } from '../store/settings';
 import { plural, t } from '../strings';
 import { animateTo, attachGestures } from '../view/gestures';
@@ -57,6 +62,16 @@ export function Viewer({ stored, settings, dark, env, onSettings, onImport, onOp
   const resetLogged = useRef<() => void>(() => {});
   const metaRef = useRef<Meta>(emptyMeta());
   const backupInput = useRef<HTMLInputElement>(null);
+
+  // ——— канва и участок для расчёта ниток ———
+  const [fabric, setFabric] = useState<FabricChoice>(() => defaultChoice(pattern));
+  const sheetInfo = useMemo(() => sheetsOf(pattern), [pattern]);
+  const [area, setArea] = useState(false);
+  const [areaItems, setAreaItems] = useState<AreaItem[]>([]);
+  const areaRef = useRef({ on: false, items: [] as AreaItem[], temp: null as Rect | null });
+  const areaLoaded = useRef(false);
+  areaRef.current.on = area;
+  areaRef.current.items = areaItems;
 
   useWakeLock(settings.wakeLock);
 
@@ -161,6 +176,11 @@ export function Viewer({ stored, settings, dark, env, onSettings, onImport, onOp
       ready = true;
     });
 
+    Promise.all([db.get(`fabric:${id}`), db.get<AreaItem[]>(`area:${id}`)]).then(([f, a]) => {
+      setFabric(defaultChoice(pattern, f));
+      if (Array.isArray(a)) setAreaItems(a);
+      areaLoaded.current = true;
+    });
     Promise.all([db.get<ViewState>(`view:${id}`), db.get<number>(`sel:${id}`), db.get(`done:${id}`), db.get(`meta:${id}`)]).then(([v, sel, done, m]) => {
       if (prog.load(done)) {
         r.refresh();
@@ -183,17 +203,111 @@ export function Viewer({ stored, settings, dark, env, onSettings, onImport, onOp
       saveTimer = window.setTimeout(() => db.set(`view:${id}`, r.vp.getView()), 400);
     };
 
+    // ——— выбор участка: касание — лист, проведение — прямоугольник по линиям 10 × 10 ———
+    let aStart: { x: number; y: number } | null = null;
+    let aMoved = false;
+    const sheetAt = (x: number, y: number) => {
+      const hits = sheetInfo.sheets.filter((s) => x >= s.x && x < s.x + s.w && y >= s.y && y < s.y + s.h);
+      const d = (s: (typeof hits)[0]) => Math.hypot(x - (s.x + s.w / 2), y - (s.y + s.h / 2));
+      return hits.sort((a, b) => d(a) - d(b))[0];
+    };
+    const areaStroke = {
+      start(px: number, py: number) {
+        aStart = r.cellUnder(px, py);
+        aMoved = false;
+        areaRef.current.temp = null;
+      },
+      move(px: number, py: number) {
+        if (!aStart) return;
+        const c = r.cellUnder(px, py);
+        if (c.x !== aStart.x || c.y !== aStart.y) aMoved = true;
+        if (aMoved) {
+          areaRef.current.temp = snapRect(aStart.x, aStart.y, c.x, c.y, W, H);
+          r.invalidate();
+        }
+      },
+      end() {
+        const tmp = areaRef.current.temp;
+        areaRef.current.temp = null;
+        if (aMoved && tmp && tmp.w > 0 && tmp.h > 0) setAreaItems((it) => [...it, { kind: 'rect', rect: tmp }]);
+        else if (aStart && !aMoved) {
+          const sh = sheetAt(aStart.x, aStart.y);
+          if (sh) {
+            setAreaItems((it) =>
+              it.some((i) => i.kind === 'sheet' && i.page === sh.page)
+                ? it.filter((i) => !(i.kind === 'sheet' && i.page === sh.page))
+                : [...it, { kind: 'sheet', page: sh.page }],
+            );
+          }
+        }
+        aStart = null;
+        r.invalidate();
+      },
+      cancel() {
+        areaRef.current.temp = null;
+        aMoved = false;
+        r.invalidate();
+      },
+      longPress(px: number, py: number) {
+        aStart = r.cellUnder(px, py);
+        aMoved = false;
+      },
+    };
+
+    r.overlay = (g) => {
+      const A = areaRef.current;
+      if (!A.on) return;
+      const { s, ox, oy } = r.vp;
+      const box = (x: number, y: number, w: number, h: number) => [ox + x * s, oy + y * s, w * s, h * s] as const;
+      const chosen = new Set(A.items.flatMap((i) => (i.kind === 'sheet' ? [i.page] : [])));
+      g.save();
+      g.fillStyle = 'rgba(224,118,28,0.22)';
+      for (const sh of sheetInfo.sheets) if (chosen.has(sh.page)) g.fillRect(...box(sh.x, sh.y, sh.w, sh.h));
+      for (const i of A.items) if (i.kind === 'rect') g.fillRect(...box(i.rect.x, i.rect.y, i.rect.w, i.rect.h));
+      g.lineWidth = 1.5;
+      g.strokeStyle = 'rgba(40,70,150,0.75)';
+      g.setLineDash([6, 4]);
+      for (const sh of sheetInfo.sheets) g.strokeRect(...box(sh.x, sh.y, sh.w, sh.h));
+      g.setLineDash([]);
+      g.strokeStyle = '#e0761c';
+      g.lineWidth = 2;
+      for (const i of A.items) if (i.kind === 'rect') g.strokeRect(...box(i.rect.x, i.rect.y, i.rect.w, i.rect.h));
+      if (A.temp) {
+        g.setLineDash([5, 3]);
+        g.strokeRect(...box(A.temp.x, A.temp.y, A.temp.w, A.temp.h));
+        g.setLineDash([]);
+      }
+      // подписи листов
+      g.font = '600 12px -apple-system, system-ui, Roboto, sans-serif';
+      g.textBaseline = 'top';
+      for (const sh of sheetInfo.sheets) {
+        if (sh.w * s < 56) continue;
+        const [x, y] = box(sh.x, sh.y, 0, 0);
+        const label = t.sheet(sh.page);
+        const w = g.measureText(label).width + 10;
+        g.fillStyle = chosen.has(sh.page) ? '#e0761c' : 'rgba(40,70,150,0.85)';
+        g.beginPath();
+        g.roundRect(x + 4, y + 4, w, 18, 9);
+        g.fill();
+        g.fillStyle = '#fff';
+        g.fillText(label, x + 9, y + 7);
+      }
+      g.restore();
+    };
+
     const detach = attachGestures(canvas, r, {
-      marking: () => markRef.current.marking,
+      marking: () => markRef.current.marking || areaRef.current.on,
       stroke: {
         start(px, py) {
+          if (areaRef.current.on) return areaStroke.start(px, py);
           op = { cells: [], value: value() };
           last = null;
           sawAny = sawOther = false;
           visit(px, py);
         },
-        move: visit,
+        move: (px, py) => (areaRef.current.on ? areaStroke.move(px, py) : visit(px, py)),
         end() {
+          if (areaRef.current.on) return areaStroke.end();
           if (op?.cells.length) {
             prog.commit(op);
             afterChange.current();
@@ -207,11 +321,13 @@ export function Viewer({ stored, settings, dark, env, onSettings, onImport, onOp
           bump();
         },
         cancel() {
+          if (areaRef.current.on) return areaStroke.cancel();
           if (op?.cells.length) r.markChanged(prog.set(op.cells, op.value ? 0 : 1));
           op = null;
           bump();
         },
         longPress(px, py) {
+          if (areaRef.current.on) return areaStroke.longPress(px, py);
           const hit = r.hit(px, py);
           if (!hit || hit.color < 0) return;
           const sel = selectedRef.current;
@@ -256,8 +372,14 @@ export function Viewer({ stored, settings, dark, env, onSettings, onImport, onOp
   }, [settings.mode, settings.grid, settings.dim, selected, dark, settings.progress]);
 
   useEffect(() => {
+    rRef.current?.invalidate();
+    if (areaLoaded.current) db.set(`area:${id}`, areaItems);
+  }, [area, areaItems]);
+
+  useEffect(() => {
     if (!toast) return;
-    const tm = setTimeout(() => setToast(null), 2500);
+    // длинную подсказку показываем дольше
+    const tm = setTimeout(() => setToast(null), 2500 + Math.max(0, toast.length - 60) * 40);
     return () => clearTimeout(tm);
   }, [toast]);
 
@@ -405,8 +527,28 @@ export function Viewer({ stored, settings, dark, env, onSettings, onImport, onOp
     saveNow.current();
     setTick((n) => n + 1);
   };
+  const areaRects = (): Rect[] =>
+    areaItems.flatMap((i) => (i.kind === 'rect' ? [i.rect] : sheetInfo.sheets.filter((s) => s.page === i.page)));
+  const areaRows = useMemo(() => {
+    const r = rRef.current;
+    if (!r || !prog || (!area && sheet !== 'area')) return [];
+    return areaCounts(r.idx, prog.done, areaMask(pattern.width, pattern.height, areaRects()), palette.length);
+  }, [areaItems, area, sheet, prog?.version]);
+  const areaCrosses = areaRows.reduce((n, r) => n + r.total, 0);
+  const openArea = () => {
+    setSheet(null);
+    setMarking(false);
+    setArea(true);
+    setToast(sheetInfo.fromPdf ? t.areaHint : `${t.areaHint}. ${t.sheetsApprox}`);
+  };
+  const updateFabric = (f: FabricChoice) => {
+    setFabric(f);
+    db.set(`fabric:${id}`, f);
+  };
+
   const toggleMarking = () => {
     setSheet(null);
+    setArea(false);
     setMarking((m) => {
       if (!m) setToast(t.markHint);
       return !m;
@@ -427,7 +569,7 @@ export function Viewer({ stored, settings, dark, env, onSettings, onImport, onOp
         )}
       </header>
 
-      <div class={`stage${marking ? ' marking' : ''}${marking && erase ? ' erasing' : ''}`} ref={wrapRef}>
+      <div class={`stage${marking || area ? ' marking' : ''}${marking && erase ? ' erasing' : ''}`} ref={wrapRef}>
         <canvas ref={canvasRef} class="scheme" />
         <canvas
           ref={miniRef}
@@ -454,8 +596,25 @@ export function Viewer({ stored, settings, dark, env, onSettings, onImport, onOp
             selected={selected}
             left={left}
             finished={finished}
+            fabric={fabric}
+            size={{ width: pattern.width, height: pattern.height }}
+            onFabric={updateFabric}
+            onArea={openArea}
             sort={settings.threadSort}
             onSort={(threadSort) => onSettings({ threadSort })}
+            onPick={(k) => {
+              choose(k);
+              setSheet(null);
+            }}
+            onClose={() => setSheet(null)}
+          />
+        )}
+        {sheet === 'area' && (
+          <AreaSheet
+            rows={areaRows}
+            palette={palette}
+            symbols={symbols}
+            fabric={fabric}
             onPick={(k) => {
               choose(k);
               setSheet(null);
@@ -520,6 +679,27 @@ export function Viewer({ stored, settings, dark, env, onSettings, onImport, onOp
             </span>
             <button class="primary small" onClick={goNearby} title={t.nearbyTitle}>
               <Icon name="target" /> {t.nearby}
+            </button>
+          </div>
+        )}
+        {area && (
+          <div class="areabar">
+            <span class="ab-text">
+              {areaItems.length
+                ? t.areaSummary(areaItems.filter((i) => i.kind === 'sheet').length, areaItems.filter((i) => i.kind === 'rect').length, plural(areaCrosses))
+                : t.areaEmpty}
+            </span>
+            <button class="seg" disabled={!areaItems.length} onClick={() => setAreaItems((it) => it.slice(0, -1))}>
+              <Icon name="undo" /> {t.areaUndo}
+            </button>
+            <button class="seg" disabled={!areaItems.length} onClick={() => setAreaItems([])}>
+              {t.areaClear}
+            </button>
+            <button class="primary small" disabled={!areaItems.length} onClick={() => setSheet('area')}>
+              {t.areaCount}
+            </button>
+            <button class="icon-btn" onClick={() => setArea(false)} aria-label={t.close}>
+              <Icon name="x" />
             </button>
           </div>
         )}

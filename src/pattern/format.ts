@@ -23,6 +23,15 @@ export interface BackstitchLine {
   y2: number;
 }
 
+/** Лист бумажной схемы (страница PDF): какие клетки на нём напечатаны. */
+export interface Sheet {
+  page: number;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
 export interface Pattern {
   format: 'xstitch-pattern';
   version: 1;
@@ -35,6 +44,8 @@ export interface Pattern {
   /** id цвета в каждой клетке, построчно (y * width + x); -1 — пусто. */
   cells: Int16Array;
   backstitch: BackstitchLine[];
+  /** Листы PDF, если схема загружена из PDF. */
+  sheets?: Sheet[];
 }
 
 export class PatternError extends Error {}
@@ -115,6 +126,19 @@ export function parsePattern(raw: unknown): Pattern {
     });
   }
 
+  let sheets: Sheet[] | undefined;
+  if (Array.isArray(raw.sheets)) {
+    sheets = [];
+    for (const sh of raw.sheets) {
+      if (!isRecord(sh)) continue;
+      const { page, x, y, w: sw, h: shh } = sh as Record<string, number>;
+      if ([page, x, y, sw, shh].every(Number.isInteger) && x >= 0 && y >= 0 && sw > 0 && shh > 0 && x + sw <= w && y + shh <= h) {
+        sheets.push({ page, x, y, w: sw, h: shh });
+      }
+    }
+    if (!sheets.length) sheets = undefined;
+  }
+
   return {
     format: 'xstitch-pattern',
     version: 1,
@@ -126,6 +150,7 @@ export function parsePattern(raw: unknown): Pattern {
     palette,
     cells,
     backstitch,
+    ...(sheets ? { sheets } : {}),
   };
 }
 

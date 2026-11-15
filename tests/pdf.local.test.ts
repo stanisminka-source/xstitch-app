@@ -25,5 +25,12 @@ describe.skipIf(!have)('PDF настоящей схемы', () => {
     expect(diff).toBe(0);
     const rgbDiff = fromPdf.palette.filter((c, k) => c.rgb.some((v, j) => Math.abs(v - ref.palette[k].rgb[j]) > 2)).map((c) => c.code);
     expect(rgbDiff).toEqual([]);
+    // листы PDF: сетка страниц, полные — 63 × 87 клеток, с перекрытием в 3 клетки
+    const sh = fromPdf.sheets ?? [];
+    expect(sh.length).toBe(49);
+    expect(sh.map((x) => x.page)).toEqual(Array.from({ length: 49 }, (_, i) => i + 1));
+    const full = sh.filter((x) => x.x + 63 <= fromPdf.width && x.y + 87 <= fromPdf.height);
+    expect(new Set(full.map((x) => `${x.w}x${x.h}`))).toEqual(new Set(['63x87']));
+    expect(sh.every((x) => x.x % 60 === 0 && x.y % 84 === 0)).toBe(true);
   }, 120_000);
 });

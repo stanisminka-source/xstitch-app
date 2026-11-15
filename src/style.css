@@ -203,3 +203,15 @@ button.pill { cursor: pointer; }
   box-shadow: 0 4px 16px rgba(0,0,0,.15); font-size: 13px; white-space: nowrap; max-width: calc(100% - 40px);
 }
 .remind span { overflow: hidden; text-overflow: ellipsis; }
+
+/* канва и мотки */
+.fabric-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--line); }
+.fabric-bar select {
+  height: 34px; padding: 0 10px; border-radius: 10px; border: 1px solid var(--line); background: var(--surface); font-size: 14px;
+}
+.fabric-info { width: 100%; margin: 0; }
+.area-btn { margin-left: auto; }
+.thread .skeins { width: 52px; text-align: right; font-size: 13px; font-weight: 600; white-space: nowrap; }
+.areabar { display: flex; align-items: center; gap: 6px; margin: 8px 10px 0; flex-wrap: wrap; }
+.areabar .ab-text { flex: 1; min-width: 140px; font-size: 13px; }
+.areabar .seg:disabled { opacity: .4; }

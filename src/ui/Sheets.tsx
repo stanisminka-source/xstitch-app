@@ -5,9 +5,10 @@ import type { PaletteColor } from '../pattern/format';
 import { db } from '../store/db';
 import { PROGRESS_MODES, type GridMode, type ProgressMode, type Settings, type ThreadSort, type ViewMode } from '../store/settings';
 import { plural, t } from '../strings';
+import { FABRICS, fabricById, finishedSize, recommendedStrands, skeinsToBuy, type FabricChoice } from '../pattern/threads';
 import { Icon } from './Icon';
 
-export type SheetName = 'view' | 'grid' | 'threads' | 'more' | 'progress';
+export type SheetName = 'view' | 'grid' | 'threads' | 'more' | 'progress' | 'area';
 
 const MODES: ViewMode[] = ['colorSymbol', 'color', 'symbol', 'coloredSymbol', 'selectedOnly', 'stitched'];
 
@@ -87,6 +88,10 @@ interface ThreadsProps {
   selected: number | null;
   left(k: number): number;
   finished(k: number): boolean;
+  fabric: FabricChoice;
+  size: { width: number; height: number };
+  onFabric(f: FabricChoice): void;
+  onArea(): void;
   sort: ThreadSort;
   onSort(s: ThreadSort): void;
   onPick(k: number | null): void;
@@ -97,6 +102,9 @@ export function ThreadsSheet(p: ThreadsProps) {
   const [q, setQ] = useState('');
   const query = q.trim().toLowerCase();
   const rows = p.order.filter((k) => !query || p.palette[k].code.toLowerCase().includes(query));
+  const fab = fabricById(p.fabric.fabric);
+  const cm = finishedSize(p.size.width, p.size.height, fab.count);
+  const total = p.order.reduce((n, k) => n + skeinsToBuy(p.palette[k].count, fab.count, p.fabric.strands), 0);
   return (
     <div class="sheet tall">
       <div class="sheet-head">
@@ -112,6 +120,34 @@ export function ThreadsSheet(p: ThreadsProps) {
         </button>
         <button class="icon-btn" onClick={p.onClose} aria-label={t.close}>
           <Icon name="x" />
+        </button>
+      </div>
+      <div class="fabric-bar">
+        <select
+          value={p.fabric.fabric}
+          onChange={(e) => {
+            const id = (e.currentTarget as HTMLSelectElement).value;
+            p.onFabric({ fabric: id, strands: recommendedStrands(fabricById(id).count) });
+          }}
+          aria-label={t.fabric}
+        >
+          {FABRICS.map((f) => (
+            <option key={f.id} value={f.id}>{f.label}</option>
+          ))}
+        </select>
+        <div class="segs">
+          {[1, 2, 3].map((n) => (
+            <button key={n} class={`seg${p.fabric.strands === n ? ' on' : ''}`} onClick={() => p.onFabric({ ...p.fabric, strands: n })}>
+              {t.strands(n)}
+            </button>
+          ))}
+        </div>
+        <p class="muted small fabric-info">
+          {t.finished(cm.w.toFixed(1).replace('.', ','), cm.h.toFixed(1).replace('.', ','))} · {t.skeinsTotal(total)}
+          {p.fabric.strands !== recommendedStrands(fab.count) && ` · ${t.strandsAdvice(recommendedStrands(fab.count))}`}
+        </p>
+        <button class="seg area-btn" onClick={p.onArea}>
+          <Icon name="area" /> {t.areaOpen}
         </button>
       </div>
       <div class="thread-list">
@@ -133,6 +169,7 @@ export function ThreadsSheet(p: ThreadsProps) {
                   `${plural(c.count)} ${t.crosses}`
                 )}
               </span>
+              <span class="skeins">{t.skeinsShort(skeinsToBuy(c.count, fab.count, p.fabric.strands))}</span>
             </button>
           );
         })}

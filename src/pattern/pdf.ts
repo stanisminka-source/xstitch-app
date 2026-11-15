@@ -237,6 +237,9 @@ interface Label {
   c: number; // центр подписи вдоль линейки: x для верхней, u = −y для левой
 }
 interface PatternPage {
+  page: number;
+  gridLeft: number; // правый край левой линейки, pt
+  gridTop: number; // нижний край верхней линейки, pt (y вверх)
   syms: { ch: string; x: number; u: number }[]; // центр символа; u = −y (вниз)
   top: Label[];
   left: Label[];
@@ -319,7 +322,7 @@ export async function parsePatternPdf(doc: PdfDoc, ops: PdfOps, onProgress?: Pdf
     const syms = inside
       .filter((g) => `${g.font}|${g.size.toFixed(2)}` === symFont)
       .map((g) => ({ ch: g.str, x: g.x + g.w / 2, u: -(g.y + g.size * 0.33) }));
-    pages.push({ syms, top, left, fills });
+    pages.push({ page: n, gridLeft: leftX, gridTop: topY, syms, top, left, fills });
   }
 
   if (!legend.length) throw new PatternError('В PDF не нашлась легенда ниток. Пока читаются только схемы из Pattern Maker.');
@@ -361,6 +364,7 @@ export async function parsePatternPdf(doc: PdfDoc, ops: PdfOps, onProgress?: Pdf
     return cand.length ? median(cand) : null;
   };
 
+  const sheets: { page: number; x: number; y: number; w: number; h: number }[] = [];
   for (const p of pages) {
     if (!p.syms.length) continue;
     const phaseX = median(p.syms.map((s) => mod(s.x - step / 2)));
@@ -370,6 +374,15 @@ export async function parsePatternPdf(doc: PdfDoc, ops: PdfOps, onProgress?: Pdf
     if (col0 === null || row0 === null) throw new PatternError('На странице схемы не прочитались номера клеток на линейках.');
     const colOf = (x: number) => col0 + Math.floor((x - phaseX) / step);
     const rowOf = (u: number) => row0 + Math.floor((u - phaseU) / step);
+    // границы листа — по подписям линеек и символам на нём
+    {
+      // первая клетка листа — сразу за линейками
+      const x0 = colOf(p.gridLeft + step / 2);
+      const y0 = rowOf(-(p.gridTop - step / 2));
+      const xs = p.syms.map((s) => colOf(s.x));
+      const ys = p.syms.map((s) => rowOf(s.u));
+      sheets.push({ page: p.page, x: x0, y: y0, w: Math.max(...xs) + 1 - x0, h: Math.max(...ys) + 1 - y0 });
+    }
 
     for (const s of p.syms) {
       const k = symIndex.get(s.ch);
@@ -427,6 +440,36 @@ export async function parsePatternPdf(doc: PdfDoc, ops: PdfOps, onProgress?: Pdf
     ...(fabric ? { fabric } : {}),
     ...(Number.isFinite(strands) ? { strands } : {}),
     palette,
+    sheets: fitSheets(sheets, width, height),
     cells: Array.from({ length: height }, (_, y) => Array.from(cells.subarray(y * width, (y + 1) * width))),
   };
+}
+
+/** Размер листа — одинаковый у всех полных листов (крайние обрезаны краем схемы).
+ *  По символам его видно не всегда (пустые края), поэтому берём самый частый шаг между листами. */
+function fitSheets(sh: { page: number; x: number; y: number; w: number; h: number }[], W: number, H: number) {
+  if (!sh.length) return undefined;
+  const xs = [...new Set(sh.map((s) => s.x))].sort((a, b) => a - b);
+  const ys = [...new Set(sh.map((s) => s.y))].sort((a, b) => a - b);
+  const stepX = xs.length > 1 ? median(xs.slice(1).map((v, i) => v - xs[i])) : W;
+  const stepY = ys.length > 1 ? median(ys.slice(1).map((v, i) => v - ys[i])) : H;
+  // перекрытие листов: самая широкая ширина по символам минус шаг (у Pattern Maker — 3 клетки)
+  const overX = Math.max(0, Math.max(...sh.map((s) => s.w)) - stepX);
+  const overY = Math.max(0, Math.max(...sh.map((s) => s.h)) - stepY);
+  // листы без единого символа (пустой край картины) тоже нужны — достраиваем сетку листов
+  const known = new Map(sh.map((s) => [`${s.x},${s.y}`, s.page]));
+  const nx = Math.ceil(Math.max(1, W - overX) / stepX);
+  const ny = Math.ceil(Math.max(1, H - overY) / stepY);
+  const ref = sh[0];
+  const base = ref.page - (Math.round(ref.y / stepY) * nx + Math.round(ref.x / stepX));
+  const out: { page: number; x: number; y: number; w: number; h: number }[] = [];
+  for (let r = 0; r < ny; r++) {
+    for (let c = 0; c < nx; c++) {
+      const x = c * stepX;
+      const y = r * stepY;
+      if (x >= W || y >= H) continue;
+      out.push({ page: known.get(`${x},${y}`) ?? base + r * nx + c, x, y, w: Math.min(stepX + overX, W - x), h: Math.min(stepY + overY, H - y) });
+    }
+  }
+  return out;
 }

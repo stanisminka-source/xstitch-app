@@ -94,6 +94,8 @@ export class SchemeRenderer {
   /** Пользователь сейчас двигает схему — не перерисовываем плитки под новый масштаб. */
   interacting = false;
   onViewChange?: () => void;
+  /** Дополнительный слой поверх схемы (листы и участки для расчёта ниток). Координаты — как у схемы. */
+  overlay?: (g: CanvasRenderingContext2D) => void;
 
   private ctx: CanvasRenderingContext2D;
   private dpr = 1;
@@ -537,6 +539,7 @@ export class SchemeRenderer {
     this.drawBackstitch(g);
     if (this.drawPulse(g)) again = true;
     this.drawGrid(g, snap);
+    this.overlay?.(g);
     g.restore();
     this.drawRulers(g);
 
