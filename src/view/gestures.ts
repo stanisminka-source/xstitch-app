@@ -22,7 +22,7 @@ export interface GestureHandlers {
 
 const TAP_SLOP = 8;
 const TAP_MS = 350;
-const LONG_MS = 450;
+const LONG_MS = 500;
 
 export function attachGestures(el: HTMLElement, r: SchemeRenderer, h: GestureHandlers): () => void {
   const pts = new Map<number, { x: number; y: number }>();
@@ -36,7 +36,6 @@ export function attachGestures(el: HTMLElement, r: SchemeRenderer, h: GestureHan
   let inertia = 0;
   let stroking = false;
   let strokeMoved = false;
-  let longFired = false;
   let longTimer = 0;
 
   const local = (e: PointerEvent | WheelEvent) => {
@@ -70,7 +69,6 @@ export function attachGestures(el: HTMLElement, r: SchemeRenderer, h: GestureHan
       downPos = p;
       moved = false;
       multi = false;
-      longFired = false;
       vel = { x: 0, y: 0 };
       lastMove = downAt;
       if (h.marking() && (e.pointerType !== 'mouse' || e.button === 0)) {
@@ -81,8 +79,10 @@ export function attachGestures(el: HTMLElement, r: SchemeRenderer, h: GestureHan
         longTimer = window.setTimeout(() => {
           if (!stroking || strokeMoved || pts.size !== 1) return;
           stopStroke(false);
-          longFired = true;
           h.stroke.longPress(downPos.x, downPos.y);
+          // после пятна палец может продолжить вести — это тот же штрих
+          stroking = true;
+          strokeMoved = true;
         }, LONG_MS);
       }
     } else {
@@ -113,8 +113,7 @@ export function attachGestures(el: HTMLElement, r: SchemeRenderer, h: GestureHan
       r.invalidate();
       return;
     }
-    if (pts.size === 1 && (stroking || longFired)) {
-      if (!stroking) return;
+    if (pts.size === 1 && stroking) {
       if (!strokeMoved && Math.hypot(p.x - downPos.x, p.y - downPos.y) >= TAP_SLOP) {
         strokeMoved = true;
         clearTimeout(longTimer);
@@ -151,10 +150,8 @@ export function attachGestures(el: HTMLElement, r: SchemeRenderer, h: GestureHan
     }
     if (pts.size > 0) return;
     pinch = null;
-    if (stroking || longFired) {
-      if (longFired) h.stroke.end(); // пятно уже отмечено — запоминаем его для отмены
-      else stopStroke(true);
-      longFired = false;
+    if (stroking) {
+      stopStroke(true);
       end();
       return;
     }

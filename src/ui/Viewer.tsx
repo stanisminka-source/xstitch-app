@@ -94,13 +94,22 @@ export function Viewer({ stored, settings, dark, env, onSettings, onImport, onOp
     // ——— штрих пальцем ———
     let op: Op | null = null;
     let last: { x: number; y: number } | null = null;
+    // что палец задел, если штрих ничего не изменил — чтобы подсказать почему
+    let sawAny = false;
+    let sawOther = false;
     const W = pattern.width;
     const H = pattern.height;
     const apply = (cells: Iterable<number>) => {
       if (!op) return;
       const sel = selectedRef.current;
       const pick: number[] = [];
-      for (const i of cells) if (r.idx[i] >= 0 && (sel === null || r.idx[i] === sel)) pick.push(i);
+      for (const i of cells) {
+        const k = r.idx[i];
+        if (k < 0) continue;
+        sawAny = true;
+        if (sel === null || k === sel) pick.push(i);
+        else sawOther = true;
+      }
       const changed = prog.set(pick, op.value);
       if (!changed.length) return;
       for (const i of changed) op.cells.push(i);
@@ -155,6 +164,7 @@ export function Viewer({ stored, settings, dark, env, onSettings, onImport, onOp
         start(px, py) {
           op = { cells: [], value: value() };
           last = null;
+          sawAny = sawOther = false;
           visit(px, py);
         },
         move: visit,
@@ -163,6 +173,10 @@ export function Viewer({ stored, settings, dark, env, onSettings, onImport, onOp
             prog.commit(op);
             saveDone.current();
             regions.current.clear();
+          } else if (op && sawAny) {
+            const sel = selectedRef.current;
+            if (sel !== null && sawOther && !markRef.current.erase) setToast(t.onlySelected(palette[sel].code));
+            else if (markRef.current.erase) setToast(t.eraserOn);
           }
           op = null;
           bump();
@@ -178,6 +192,7 @@ export function Viewer({ stored, settings, dark, env, onSettings, onImport, onOp
           const sel = selectedRef.current;
           if (sel !== null && hit.color !== sel) return;
           op = { cells: [], value: value() };
+          last = { x: hit.x, y: hit.y }; // дальше можно вести пальцем — штрих продолжится
           apply(patchCells(r.idx, W, H, hit.x, hit.y));
           if (op.cells.length) {
             navigator.vibrate?.(15);
@@ -298,6 +313,8 @@ export function Viewer({ stored, settings, dark, env, onSettings, onImport, onOp
       if (!m) setToast(t.markHint);
       return !m;
     });
+    // каждый вход в отметку начинается с кисти, а не с ластика
+    setErase(false);
   };
 
   return (
@@ -310,7 +327,7 @@ export function Viewer({ stored, settings, dark, env, onSettings, onImport, onOp
         )}
       </header>
 
-      <div class={`stage${marking ? ' marking' : ''}`} ref={wrapRef}>
+      <div class={`stage${marking ? ' marking' : ''}${marking && erase ? ' erasing' : ''}`} ref={wrapRef}>
         <canvas ref={canvasRef} class="scheme" />
         <canvas
           ref={miniRef}
@@ -386,7 +403,10 @@ export function Viewer({ stored, settings, dark, env, onSettings, onImport, onOp
                 <Icon name="square" /> {t.toolSquare}
               </button>
             </div>
-            <button class={`mb erase${erase ? ' on' : ''}`} onClick={() => setErase((v) => !v)} aria-pressed={erase}>
+            <button class={`mb erase${erase ? ' on' : ''}`} onClick={() => {
+                setErase((v) => !v);
+                setToast(erase ? t.eraserOff : t.eraserOn);
+              }} aria-pressed={erase}>
               <Icon name="eraser" /> {t.toolErase}
             </button>
             <span class="grow" />
