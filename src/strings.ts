@@ -2,26 +2,74 @@
 export const ru = {
   appName: 'Smile & Stitch',
   tagline: 'Схемы для вышивки крестом',
-  stageNote: 'Это пустой каркас приложения (этап 0). Схемы появятся на этапе 1.',
-  statusTitle: 'Состояние',
+
+  // загрузка схемы
+  emptyTitle: 'Загрузите первую схему',
+  emptyText: 'Файл схемы в формате .json хранится только на этом устройстве.',
+  importButton: 'Загрузить схему',
+  importing: 'Загружаю схему…',
+  importError: 'Не получилось загрузить схему',
+  loading: 'Открываю схему…',
+
+  // шапка
+  totalDone: 'Вышито',
+  menu: 'Мои схемы',
+
+  // плашка нити
+  left: 'осталось',
+  nearby: 'рядом',
+  nearbyTitle: 'Перейти к ближайшему участку этого цвета',
+  allVisible: 'Все участки этого цвета уже на экране',
+
+  // нижняя панель
+  tabView: 'Вид',
+  tabGrid: 'Сетка',
+  tabMark: 'Отметить',
+  tabThreads: 'Нитки',
+  tabMore: 'Ещё',
+  markLater: 'Отметка вышитого появится на этапе 2',
+
+  modes: {
+    colorSymbol: 'Цвет и символ',
+    color: 'Только цвет',
+    symbol: 'Символы',
+    coloredSymbol: 'Цветные символы',
+    selectedOnly: 'Только выбранный',
+    stitched: 'Вышитый вид',
+  },
+  selectedOnlyHint: 'Выберите нить — останутся только её клетки',
+  grid: { strong: 'Контрастная', soft: 'Бледная', off: 'Без сетки' },
+
+  // нитки
+  threadsTitle: 'Нитки',
+  search: 'Номер DMC',
+  sortCode: 'По номеру',
+  sortCount: 'По количеству',
+  crosses: 'кр.',
+  nothingFound: 'Такого номера в схеме нет',
+
+  // ещё
+  theme: 'Тема',
+  themes: { system: 'Как в системе', light: 'Светлая', dark: 'Тёмная' },
+  dim: 'Приглушение остальных цветов',
+  wakeLock: 'Экран не гаснет',
+  patterns: 'Мои схемы',
+  deletePattern: 'Удалить',
+  deleteConfirm: (title: string) => `Удалить схему «${title}» с устройства? Это нельзя отменить.`,
+  storage: 'Хранилище',
+  storagePersistent: 'постоянное',
+  storageBestEffort: 'обычное — браузер может очистить при нехватке места',
   offlineReady: 'Работает без интернета',
   offlinePreparing: 'Готовится к работе без интернета…',
-  offlineUnsupported: 'Этот браузер не поддерживает работу без интернета',
-  offlineError: 'Не удалось подготовить работу без интернета',
-  details: 'Подробности для разработчика',
-  iosHint:
-    'На iPad и iPhone приложение с главного экрана хранит данные отдельно от Safari. Первый раз откройте его со значка при включённом интернете и дождитесь зелёной точки «Работает без интернета».',
-  networkOnline: 'Сеть: есть',
-  networkOffline: 'Сеть: нет (авиарежим)',
-  storagePersistent: 'Хранилище: постоянное',
-  storageBestEffort: 'Хранилище: обычное (браузер может очистить при нехватке места)',
-  storageUnknown: 'Хранилище: проверяется…',
-  installed: 'Открыто как приложение с главного экрана',
-  inBrowser: 'Открыто во вкладке браузера',
   updateAvailable: 'Есть новая версия',
   updateButton: 'Обновить',
   version: 'Версия',
+  close: 'Закрыть',
 } as const;
 
 export type Strings = typeof ru;
 export const t: Strings = ru;
+
+export function plural(n: number): string {
+  return n.toLocaleString('ru-RU');
+}
