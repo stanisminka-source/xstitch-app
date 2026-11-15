@@ -1,10 +1,10 @@
 :root {
-  --bg: #f7f4ee;
-  --surface: #ffffff;
+  --bg: #ffffff;
+  --surface: #faf8f5;
   --text: #24221e;
   --muted: #6f6a60;
-  --line: #e4ded2;
-  --accent: #b5476a;
+  --line: #ebe7e0;
+  --accent: #e0761c;
   --ok: #3f8a5a;
   --info: #8a7a4a;
   color-scheme: light;
@@ -16,7 +16,7 @@
     --text: #efebe3;
     --muted: #a59f93;
     --line: #3a3732;
-    --accent: #e07a9b;
+    --accent: #f0923f;
     --ok: #6cc28a;
     --info: #d2bd7a;
     color-scheme: dark;
@@ -64,3 +64,6 @@ button {
   background: var(--accent); color: #fff; cursor: pointer;
 }
 .note, .version { color: var(--muted); font-size: 14px; text-align: center; }
+.hint { font-size: 14px; color: var(--text); }
+.diag { font-size: 12px; color: var(--muted); margin-top: 8px; }
+.diag pre { white-space: pre-wrap; word-break: break-all; user-select: text; -webkit-user-select: text; }
