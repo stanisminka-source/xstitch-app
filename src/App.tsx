@@ -86,7 +86,9 @@ export function App() {
     setError(null);
     setBusy(t.importing);
     try {
-      const pattern = parsePattern(JSON.parse(await file.text()));
+      const raw = JSON.parse(await file.text());
+      if (raw?.format === 'smile-stitch-progress') throw new PatternError(t.progressNotPattern);
+      const pattern = parsePattern(raw);
       const id = patternId(pattern);
       const stored: StoredPattern = {
         id,
@@ -108,7 +110,7 @@ export function App() {
 
   const deletePattern = async (id: string) => {
     await db.deletePattern(id);
-    await Promise.all([db.del(`view:${id}`), db.del(`sel:${id}`), db.del(`done:${id}`)]);
+    await Promise.all([db.del(`view:${id}`), db.del(`sel:${id}`), db.del(`done:${id}`), db.del(`meta:${id}`)]);
     if (current?.id === id) {
       const list = await db.listPatterns();
       if (list.length) await openPattern(list[0].id);

@@ -7,7 +7,7 @@ import { PROGRESS_MODES, type GridMode, type ProgressMode, type Settings, type T
 import { plural, t } from '../strings';
 import { Icon } from './Icon';
 
-export type SheetName = 'view' | 'grid' | 'threads' | 'more';
+export type SheetName = 'view' | 'grid' | 'threads' | 'more' | 'progress';
 
 const MODES: ViewMode[] = ['colorSymbol', 'color', 'symbol', 'coloredSymbol', 'selectedOnly', 'stitched'];
 
@@ -148,6 +148,7 @@ interface MoreProps {
   currentId: string;
   onSettings(patch: Partial<Settings>): void;
   onImport(): void;
+  onProgress(): void;
   onOpen(id: string): void;
   onDelete(id: string): void;
   onClose(): void;
@@ -193,6 +194,13 @@ export function MoreSheet(p: MoreProps) {
           ))}
           <button class="primary" onClick={p.onImport}>
             <Icon name="upload" /> {t.importButton}
+          </button>
+        </section>
+
+        <section>
+          <h3>{t.progressSection}</h3>
+          <button class="seg" onClick={p.onProgress}>
+            <Icon name="chart" /> {t.progressOpen}
           </button>
         </section>
 

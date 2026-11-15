@@ -184,3 +184,22 @@ button.primary.small { padding: 0 10px; height: 26px; font-size: 13px; gap: 4px;
 body > .toast, #app > .toast { position: fixed; bottom: calc(env(safe-area-inset-bottom) + 150px); }
 .toast.update { display: flex; align-items: center; gap: 12px; }
 .toast.error { background: var(--danger); }
+
+/* прогресс */
+button.pill { cursor: pointer; }
+.pill.on { background: var(--text); color: var(--bg); }
+.pg-summary { display: flex; align-items: center; gap: 14px; }
+.pg-big { font-size: 34px; font-weight: 700; color: var(--accent); min-width: 84px; }
+.days { display: flex; flex-direction: column; gap: 4px; }
+.day { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+.day-label { width: 92px; color: var(--muted); white-space: nowrap; }
+.day-bar { flex: 1; height: 10px; border-radius: 5px; background: var(--surface-2); overflow: hidden; }
+.day-bar span { display: block; height: 100%; background: var(--accent); border-radius: 5px; }
+.day-bar span.neg { background: var(--muted); }
+.day-n { width: 52px; text-align: right; font-variant-numeric: tabular-nums; }
+.remind {
+  position: absolute; left: 50%; transform: translateX(-50%); z-index: 4; display: flex; align-items: center; gap: 8px;
+  padding: 4px 4px 4px 12px; border-radius: 999px; background: var(--bg); border: 1px solid var(--accent-line);
+  box-shadow: 0 4px 16px rgba(0,0,0,.15); font-size: 13px; white-space: nowrap; max-width: calc(100% - 40px);
+}
+.remind span { overflow: hidden; text-overflow: ellipsis; }

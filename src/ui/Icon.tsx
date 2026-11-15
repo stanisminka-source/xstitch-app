@@ -10,6 +10,8 @@ const PATHS: Record<string, string> = {
   upload: 'M12 16V4 M7 9l5-5 5 5 M5 20h14',
   trash: 'M4 7h16 M10 11v6 M14 11v6 M6 7l1 13h10l1-13 M9 7V4h6v3',
   check: 'M5 12l5 5 9-10',
+  chart: 'M4 20h16 M7 16v-4 M12 16V7 M17 16v-7',
+  download: 'M12 4v12 M7 11l5 5 5-5 M5 20h14',
   sort: 'M7 4v16 M4 17l3 3 3-3 M17 20V4 M14 7l3-3 3 3',
   brush: 'M4 20c2.5 0 4-1.3 4-3.5a2.5 2.5 0 0 0-5 0c0 1.4-.4 2.6-1 3.5Z M9.5 14.5 20 4 M8 12l4 4',
   square: 'M4 4h16v16H4Z M8 8l8 8 M16 8l-8 8',

@@ -5,6 +5,8 @@ import { byDistance, findRegions, type Region } from '../pattern/regions';
 import { assignSymbols } from '../pattern/symbols';
 import { db, type StoredPattern } from '../store/db';
 import { blockCells, lineCells, patchCells, percent, Progress, type Op } from '../progress/progress';
+import { BackupError, backupFileName, emptyMeta, logDelta, makeBackup, mergeDays, normalizeMeta, readBackup, REMIND_EVERY, type Meta } from '../progress/backup';
+import { ProgressSheet } from './ProgressSheet';
 import type { Settings } from '../store/settings';
 import { plural, t } from '../strings';
 import { animateTo, attachGestures } from '../view/gestures';
@@ -47,7 +49,14 @@ export function Viewer({ stored, settings, dark, env, onSettings, onImport, onOp
   markRef.current = { marking, tool, erase };
   const [, setTick] = useState(0);
   const progRef = useRef<Progress | null>(null);
-  const saveDone = useRef<() => void>(() => {});
+  /** После любого изменения отметок: журнал, сохранение, обновление экрана. */
+  const afterChange = useRef<() => void>(() => {});
+  /** Записать отметки и журнал на устройство прямо сейчас. */
+  const saveNow = useRef<() => void>(() => {});
+  /** После загрузки копии: новое число вышитого не попадает в журнал за сегодня. */
+  const resetLogged = useRef<() => void>(() => {});
+  const metaRef = useRef<Meta>(emptyMeta());
+  const backupInput = useRef<HTMLInputElement>(null);
 
   useWakeLock(settings.wakeLock);
 
@@ -69,18 +78,24 @@ export function Viewer({ stored, settings, dark, env, onSettings, onImport, onOp
     let doneTimer = 0;
     let uiFrame = 0;
 
-    // ——— сохранение отметок ———
+    // ——— сохранение отметок и журнала ———
+    const meta = emptyMeta();
+    metaRef.current = meta;
+    let loggedTotal = 0;
     let dirty = false;
     const flushDone = () => {
       clearTimeout(doneTimer);
       if (!dirty) return;
       dirty = false;
       db.set(`done:${id}`, prog.done);
+      db.set(`meta:${id}`, meta);
     };
-    saveDone.current = () => {
+    saveNow.current = () => {
       dirty = true;
-      clearTimeout(doneTimer);
-      doneTimer = window.setTimeout(flushDone, 600);
+      flushDone();
+    };
+    resetLogged.current = () => {
+      loggedTotal = prog.doneTotal;
     };
     const onHide = () => document.visibilityState === 'hidden' && flushDone();
     document.addEventListener('visibilitychange', onHide);
@@ -89,6 +104,14 @@ export function Viewer({ stored, settings, dark, env, onSettings, onImport, onOp
     /** Интерфейс (проценты, «осталось») обновляем не чаще раза за кадр. */
     const bump = () => {
       if (!uiFrame) uiFrame = requestAnimationFrame(() => { uiFrame = 0; setTick((n) => n + 1); });
+    };
+    afterChange.current = () => {
+      logDelta(meta, prog.doneTotal - loggedTotal);
+      loggedTotal = prog.doneTotal;
+      dirty = true;
+      clearTimeout(doneTimer);
+      doneTimer = window.setTimeout(flushDone, 600);
+      bump();
     };
 
     // ——— штрих пальцем ———
@@ -138,11 +161,13 @@ export function Viewer({ stored, settings, dark, env, onSettings, onImport, onOp
       ready = true;
     });
 
-    Promise.all([db.get<ViewState>(`view:${id}`), db.get<number>(`sel:${id}`), db.get(`done:${id}`)]).then(([v, sel, done]) => {
+    Promise.all([db.get<ViewState>(`view:${id}`), db.get<number>(`sel:${id}`), db.get(`done:${id}`), db.get(`meta:${id}`)]).then(([v, sel, done, m]) => {
       if (prog.load(done)) {
         r.refresh();
         bump();
       }
+      Object.assign(meta, normalizeMeta(m));
+      loggedTotal = prog.doneTotal;
       restored = v;
       if (v && ready) {
         r.vp.setView(v);
@@ -171,7 +196,7 @@ export function Viewer({ stored, settings, dark, env, onSettings, onImport, onOp
         end() {
           if (op?.cells.length) {
             prog.commit(op);
-            saveDone.current();
+            afterChange.current();
             regions.current.clear();
           } else if (op && sawAny) {
             const sel = selectedRef.current;
@@ -205,7 +230,7 @@ export function Viewer({ stored, settings, dark, env, onSettings, onImport, onOp
       },
       onTap: (px, py) => {
         const hit = r.hit(px, py);
-        setSheet((s) => (s === 'threads' || s === 'more' ? null : s));
+        setSheet((s) => (s === 'threads' || s === 'more' || s === 'progress' ? null : s));
         if (!hit || hit.color < 0) return;
         choose(hit.color === selectedRef.current ? null : hit.color);
       },
@@ -304,7 +329,80 @@ export function Viewer({ stored, settings, dark, env, onSettings, onImport, onOp
     const changed = dir === 'undo' ? prog.undo() : prog.redo();
     r.markChanged(changed);
     regions.current.clear();
-    saveDone.current();
+    afterChange.current();
+    setTick((n) => n + 1);
+  };
+
+  // ——— резервная копия ———
+  const exportProgress = async () => {
+    if (!prog) return;
+    const meta = metaRef.current;
+    const name = backupFileName(pattern.title);
+    const text = JSON.stringify(makeBackup({ id, title: pattern.title, width: pattern.width, height: pattern.height }, prog.done, prog.doneTotal, meta.days));
+    const asJson = new File([text], name, { type: 'application/json' });
+    const asText = new File([text], name, { type: 'text/plain' });
+    let saved = false;
+    try {
+      // меню «Поделиться»: на iPad — «Сохранить в Файлы», на Android — Диск, мессенджеры
+      const file = navigator.canShare?.({ files: [asJson] }) ? asJson : navigator.canShare?.({ files: [asText] }) ? asText : null;
+      if (file) {
+        await navigator.share({ files: [file], title: name });
+        saved = true;
+      }
+    } catch (e) {
+      if ((e as Error).name === 'AbortError') return; // передумали — ничего не делаем
+    }
+    if (!saved) {
+      // без меню «Поделиться» — обычное скачивание в «Загрузки»
+      const url = URL.createObjectURL(asJson);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = name;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 10_000);
+    }
+    meta.backupAt = Date.now();
+    meta.since = 0;
+    meta.remindAt = REMIND_EVERY;
+    saveNow.current();
+    setToast(t.backupSaved);
+    setTick((n) => n + 1);
+  };
+
+  const importProgress = async (file: File) => {
+    const r = rRef.current;
+    if (!r || !prog) return;
+    try {
+      let raw: unknown;
+      try {
+        raw = JSON.parse(await file.text());
+      } catch {
+        throw new BackupError(t.notProgressFile);
+      }
+      const b = readBackup(raw, { id, width: pattern.width, height: pattern.height });
+      const fileDone = b.done.reduce((n, v, i) => n + (v && r.idx[i] >= 0 ? 1 : 0), 0);
+      const when = b.savedAt ? new Date(b.savedAt).toLocaleString('ru-RU', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' }) : '';
+      if (!confirm(t.restoreConfirm(percent(prog.doneTotal, prog.total), percent(fileDone, prog.total), when))) return;
+      prog.load(b.done);
+      r.refresh();
+      const meta = metaRef.current;
+      meta.days = mergeDays(meta.days, b.days);
+      resetLogged.current();
+      regions.current.clear();
+      saveNow.current();
+      setSheet(null);
+      setToast(t.restored(percent(prog.doneTotal, prog.total)));
+      setTick((n) => n + 1);
+    } catch (e) {
+      setToast(e instanceof BackupError ? e.message : String(e));
+    }
+  };
+
+  const meta = metaRef.current;
+  const remind = !marking && sheet === null && !!prog && prog.doneTotal > 0 && meta.since >= meta.remindAt;
+  const snooze = () => {
+    meta.remindAt = meta.since + REMIND_EVERY;
+    saveNow.current();
     setTick((n) => n + 1);
   };
   const toggleMarking = () => {
@@ -321,7 +419,9 @@ export function Viewer({ stored, settings, dark, env, onSettings, onImport, onOp
     <div class="viewer">
       <header class="topbar">
         <div class="title" title={pattern.title}>{pattern.title}</div>
-        <span class="pill">{t.totalDone} {prog ? percent(prog.doneTotal, prog.total) : '0'}%</span>
+        <button class={`pill${sheet === 'progress' ? ' on' : ''}`} onClick={() => toggleSheet('progress')}>
+          {t.totalDone} {prog ? percent(prog.doneTotal, prog.total) : '0'}%
+        </button>
         {sel && selected !== null && (
           <span class="pill accent">{sel.code} · {prog ? percent(prog.doneBy[selected], prog.countBy[selected]) : '0'}%</span>
         )}
@@ -363,6 +463,35 @@ export function Viewer({ stored, settings, dark, env, onSettings, onImport, onOp
             onClose={() => setSheet(null)}
           />
         )}
+        {sheet === 'progress' && prog && (
+          <ProgressSheet
+            prog={prog}
+            meta={meta}
+            colors={palette.length}
+            onExport={exportProgress}
+            onImport={() => backupInput.current?.click()}
+            onClose={() => setSheet(null)}
+          />
+        )}
+        {remind && (
+          <div class="remind" style={{ top: `${RULER + 8}px` }}>
+            <span>{t.remindText(plural(meta.since))}</span>
+            <button class="primary small" onClick={exportProgress}>{t.backupNow}</button>
+            <button class="icon-btn" onClick={snooze} aria-label={t.later}>
+              <Icon name="x" />
+            </button>
+          </div>
+        )}
+        <input
+          ref={backupInput}
+          type="file"
+          hidden
+          onChange={(e) => {
+            const f = (e.currentTarget as HTMLInputElement).files?.[0];
+            (e.currentTarget as HTMLInputElement).value = '';
+            if (f) importProgress(f);
+          }}
+        />
         {sheet === 'more' && (
           <MoreSheet
             settings={settings}
@@ -370,6 +499,7 @@ export function Viewer({ stored, settings, dark, env, onSettings, onImport, onOp
             currentId={id}
             onSettings={onSettings}
             onImport={onImport}
+            onProgress={() => setSheet('progress')}
             onOpen={(pid) => {
               setSheet(null);
               onOpen(pid);
