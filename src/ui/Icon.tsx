@@ -11,6 +11,11 @@ const PATHS: Record<string, string> = {
   trash: 'M4 7h16 M10 11v6 M14 11v6 M6 7l1 13h10l1-13 M9 7V4h6v3',
   check: 'M5 12l5 5 9-10',
   sort: 'M7 4v16 M4 17l3 3 3-3 M17 20V4 M14 7l3-3 3 3',
+  brush: 'M4 20c2.5 0 4-1.3 4-3.5a2.5 2.5 0 0 0-5 0c0 1.4-.4 2.6-1 3.5Z M9.5 14.5 20 4 M8 12l4 4',
+  square: 'M4 4h16v16H4Z M8 8l8 8 M16 8l-8 8',
+  eraser: 'M8 20h12 M5.5 15.5l9-9a2 2 0 0 1 2.8 0l1.2 1.2a2 2 0 0 1 0 2.8L11 18H8l-2.5-2.5Z M10 11l4 4',
+  undo: 'M9 14 4 9l5-5 M4 9h10a6 6 0 0 1 0 12h-3',
+  redo: 'M15 14l5-5-5-5 M20 9H10a6 6 0 0 0 0 12h3',
 };
 
 export function Icon({ name, size = 18 }: { name: string; size?: number }) {

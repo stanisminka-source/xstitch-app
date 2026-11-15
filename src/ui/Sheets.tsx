@@ -3,7 +3,7 @@ import type { AppEnv } from '../App';
 import { css, inkOf } from '../lib/color';
 import type { PaletteColor } from '../pattern/format';
 import { db } from '../store/db';
-import type { GridMode, Settings, ThreadSort, ViewMode } from '../store/settings';
+import { PROGRESS_MODES, type GridMode, type ProgressMode, type Settings, type ThreadSort, type ViewMode } from '../store/settings';
 import { plural, t } from '../strings';
 import { Icon } from './Icon';
 
@@ -41,15 +41,27 @@ function hex(h: string): [number, number, number] {
   return [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)];
 }
 
-export function ViewSheet({ value, onChange }: { value: ViewMode; onChange(m: ViewMode): void }) {
+export function ViewSheet(p: { value: ViewMode; onChange(m: ViewMode): void; progress: ProgressMode; onProgress(m: ProgressMode): void }) {
   return (
-    <div class="sheet row-sheet">
-      {MODES.map((m) => (
-        <button key={m} class={`opt${m === value ? ' on' : ''}`} onClick={() => onChange(m)}>
-          <ModePreview mode={m} />
-          <span>{t.modes[m]}</span>
-        </button>
-      ))}
+    <div class="sheet">
+      <div class="row-sheet">
+        {MODES.map((m) => (
+          <button key={m} class={`opt${m === p.value ? ' on' : ''}`} onClick={() => p.onChange(m)}>
+            <ModePreview mode={m} />
+            <span>{t.modes[m]}</span>
+          </button>
+        ))}
+      </div>
+      <div class="sheet-row">
+        <span class="muted small">{t.progressTitle}</span>
+        <div class="segs">
+          {PROGRESS_MODES.map((m) => (
+            <button key={m} class={`seg${m === p.progress ? ' on' : ''}`} onClick={() => p.onProgress(m)}>
+              {t.progressModes[m]}
+            </button>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }
@@ -73,6 +85,8 @@ interface ThreadsProps {
   symbols: string[];
   order: number[];
   selected: number | null;
+  left(k: number): number;
+  finished(k: number): boolean;
   sort: ThreadSort;
   onSort(s: ThreadSort): void;
   onPick(k: number | null): void;
@@ -104,11 +118,21 @@ export function ThreadsSheet(p: ThreadsProps) {
         {rows.map((k) => {
           const c = p.palette[k];
           return (
-            <button key={k} class={`thread${k === p.selected ? ' on' : ''}`} onClick={() => p.onPick(k === p.selected ? null : k)}>
+            <button key={k} class={`thread${k === p.selected ? ' on' : ''}${p.finished(k) ? ' finished' : ''}`} onClick={() => p.onPick(k === p.selected ? null : k)}>
               <span class="sw" style={{ background: css(c.rgb), color: inkOf(c.rgb) }}>{p.symbols[k]}</span>
               <span class="code">{c.code}</span>
               <span class="name">{c.name}</span>
-              <span class="count">{plural(c.count)} {t.crosses}</span>
+              <span class="count">
+                {p.finished(k) ? (
+                  <>
+                    <Icon name="check" size={14} /> {t.done}
+                  </>
+                ) : p.left(k) < c.count ? (
+                  `${t.left} ${plural(p.left(k))} ${t.of} ${plural(c.count)}`
+                ) : (
+                  `${plural(c.count)} ${t.crosses}`
+                )}
+              </span>
             </button>
           );
         })}

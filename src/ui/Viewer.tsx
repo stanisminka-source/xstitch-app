@@ -4,6 +4,7 @@ import { css, inkOf } from '../lib/color';
 import { byDistance, findRegions, type Region } from '../pattern/regions';
 import { assignSymbols } from '../pattern/symbols';
 import { db, type StoredPattern } from '../store/db';
+import { blockCells, lineCells, patchCells, percent, Progress, type Op } from '../progress/progress';
 import type { Settings } from '../store/settings';
 import { plural, t } from '../strings';
 import { animateTo, attachGestures } from '../view/gestures';
@@ -39,10 +40,18 @@ export function Viewer({ stored, settings, dark, env, onSettings, onImport, onOp
   const nearbyState = useRef<{ color: number; list: Region[]; i: number } | null>(null);
   const selectedRef = useRef(selected);
   selectedRef.current = selected;
+  const [marking, setMarking] = useState(false);
+  const [tool, setTool] = useState<'brush' | 'square'>('brush');
+  const [erase, setErase] = useState(false);
+  const markRef = useRef({ marking, tool, erase });
+  markRef.current = { marking, tool, erase };
+  const [, setTick] = useState(0);
+  const progRef = useRef<Progress | null>(null);
+  const saveDone = useRef<() => void>(() => {});
 
   useWakeLock(settings.wakeLock);
 
-  const style = { mode: settings.mode, grid: settings.grid, dim: settings.dim, selected, dark };
+  const style = { mode: settings.mode, grid: settings.grid, dim: settings.dim, selected, dark, progress: settings.progress };
 
   // Создаём отрисовщик, восстанавливаем место и выбранную нить.
   useEffect(() => {
@@ -50,9 +59,68 @@ export function Viewer({ stored, settings, dark, env, onSettings, onImport, onOp
     const wrap = wrapRef.current!;
     const r = new SchemeRenderer(canvas, pattern, symbols, style);
     rRef.current = r;
+    const prog = new Progress(r.idx, palette.length);
+    // общий массив: отрисовщик видит отметки сразу, без копирования
+    r.done = prog.done;
+    progRef.current = prog;
     let restored: ViewState | undefined;
     let ready = false;
     let saveTimer = 0;
+    let doneTimer = 0;
+    let uiFrame = 0;
+
+    // ——— сохранение отметок ———
+    let dirty = false;
+    const flushDone = () => {
+      clearTimeout(doneTimer);
+      if (!dirty) return;
+      dirty = false;
+      db.set(`done:${id}`, prog.done);
+    };
+    saveDone.current = () => {
+      dirty = true;
+      clearTimeout(doneTimer);
+      doneTimer = window.setTimeout(flushDone, 600);
+    };
+    const onHide = () => document.visibilityState === 'hidden' && flushDone();
+    document.addEventListener('visibilitychange', onHide);
+    window.addEventListener('pagehide', flushDone);
+
+    /** Интерфейс (проценты, «осталось») обновляем не чаще раза за кадр. */
+    const bump = () => {
+      if (!uiFrame) uiFrame = requestAnimationFrame(() => { uiFrame = 0; setTick((n) => n + 1); });
+    };
+
+    // ——— штрих пальцем ———
+    let op: Op | null = null;
+    let last: { x: number; y: number } | null = null;
+    const W = pattern.width;
+    const H = pattern.height;
+    const apply = (cells: Iterable<number>) => {
+      if (!op) return;
+      const sel = selectedRef.current;
+      const pick: number[] = [];
+      for (const i of cells) if (r.idx[i] >= 0 && (sel === null || r.idx[i] === sel)) pick.push(i);
+      const changed = prog.set(pick, op.value);
+      if (!changed.length) return;
+      for (const i of changed) op.cells.push(i);
+      r.markChanged(changed);
+      bump();
+    };
+    const visit = (px: number, py: number) => {
+      const c = r.cellUnder(px, py);
+      const path = last ? lineCells(last.x, last.y, c.x, c.y) : [[c.x, c.y] as [number, number]];
+      if (last && last.x === c.x && last.y === c.y) return;
+      last = c;
+      const cells: number[] = [];
+      for (const [x, y] of path) {
+        if (x < 0 || y < 0 || x >= W || y >= H) continue;
+        if (markRef.current.tool === 'square') cells.push(...blockCells(x, y, W, H));
+        else cells.push(y * W + x);
+      }
+      apply(cells);
+    };
+    const value = (): 0 | 1 => (markRef.current.erase ? 0 : 1);
 
     const ro = new ResizeObserver(() => {
       const b = wrap.getBoundingClientRect();
@@ -61,7 +129,11 @@ export function Viewer({ stored, settings, dark, env, onSettings, onImport, onOp
       ready = true;
     });
 
-    Promise.all([db.get<ViewState>(`view:${id}`), db.get<number>(`sel:${id}`)]).then(([v, sel]) => {
+    Promise.all([db.get<ViewState>(`view:${id}`), db.get<number>(`sel:${id}`), db.get(`done:${id}`)]).then(([v, sel, done]) => {
+      if (prog.load(done)) {
+        r.refresh();
+        bump();
+      }
       restored = v;
       if (v && ready) {
         r.vp.setView(v);
@@ -78,6 +150,44 @@ export function Viewer({ stored, settings, dark, env, onSettings, onImport, onOp
     };
 
     const detach = attachGestures(canvas, r, {
+      marking: () => markRef.current.marking,
+      stroke: {
+        start(px, py) {
+          op = { cells: [], value: value() };
+          last = null;
+          visit(px, py);
+        },
+        move: visit,
+        end() {
+          if (op?.cells.length) {
+            prog.commit(op);
+            saveDone.current();
+            regions.current.clear();
+          }
+          op = null;
+          bump();
+        },
+        cancel() {
+          if (op?.cells.length) r.markChanged(prog.set(op.cells, op.value ? 0 : 1));
+          op = null;
+          bump();
+        },
+        longPress(px, py) {
+          const hit = r.hit(px, py);
+          if (!hit || hit.color < 0) return;
+          const sel = selectedRef.current;
+          if (sel !== null && hit.color !== sel) return;
+          op = { cells: [], value: value() };
+          apply(patchCells(r.idx, W, H, hit.x, hit.y));
+          if (op.cells.length) {
+            navigator.vibrate?.(15);
+            const xs = op.cells.map((i) => i % W);
+            const ys = op.cells.map((i) => Math.floor(i / W));
+            r.flash(Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys));
+          }
+          // end() придёт, когда палец поднимут
+        },
+      },
       onTap: (px, py) => {
         const hit = r.hit(px, py);
         setSheet((s) => (s === 'threads' || s === 'more' ? null : s));
@@ -90,6 +200,10 @@ export function Viewer({ stored, settings, dark, env, onSettings, onImport, onOp
     });
 
     return () => {
+      flushDone();
+      cancelAnimationFrame(uiFrame);
+      document.removeEventListener('visibilitychange', onHide);
+      window.removeEventListener('pagehide', flushDone);
       ro.disconnect();
       detach();
       r.destroy();
@@ -99,7 +213,7 @@ export function Viewer({ stored, settings, dark, env, onSettings, onImport, onOp
 
   useEffect(() => {
     rRef.current?.setStyle(style);
-  }, [settings.mode, settings.grid, settings.dim, selected, dark]);
+  }, [settings.mode, settings.grid, settings.dim, selected, dark, settings.progress]);
 
   useEffect(() => {
     if (!toast) return;
@@ -118,10 +232,16 @@ export function Viewer({ stored, settings, dark, env, onSettings, onImport, onOp
     if (!r || selected === null) return;
     let list = regions.current.get(selected);
     if (!list) {
-      list = findRegions(r.idx, pattern.width, pattern.height, selected);
+      // ищем только среди ещё не вышитых клеток
+      const done = progRef.current?.done;
+      const cells = done ? r.idx.map((k, i) => (done[i] ? -1 : k)) : r.idx;
+      list = findRegions(cells, pattern.width, pattern.height, selected);
       regions.current.set(selected, list);
     }
-    if (!list.length) return;
+    if (!list.length) {
+      setToast(t.colorDone);
+      return;
+    }
     let st = nearbyState.current;
     if (!st || st.color !== selected) {
       const c = r.vp.center();
@@ -160,15 +280,37 @@ export function Viewer({ stored, settings, dark, env, onSettings, onImport, onOp
 
   const toggleSheet = (s: SheetName) => setSheet((cur) => (cur === s ? null : s));
 
+  const prog = progRef.current;
+  const left = (k: number) => (prog ? prog.countBy[k] - prog.doneBy[k] : palette[k].count);
+  const finished = (k: number) => !!prog && prog.countBy[k] > 0 && prog.doneBy[k] >= prog.countBy[k];
+  const history = (dir: 'undo' | 'redo') => {
+    const r = rRef.current;
+    if (!r || !prog) return;
+    const changed = dir === 'undo' ? prog.undo() : prog.redo();
+    r.markChanged(changed);
+    regions.current.clear();
+    saveDone.current();
+    setTick((n) => n + 1);
+  };
+  const toggleMarking = () => {
+    setSheet(null);
+    setMarking((m) => {
+      if (!m) setToast(t.markHint);
+      return !m;
+    });
+  };
+
   return (
     <div class="viewer">
       <header class="topbar">
         <div class="title" title={pattern.title}>{pattern.title}</div>
-        <span class="pill">{t.totalDone} 0%</span>
-        {sel && <span class="pill accent">{sel.code} · 0%</span>}
+        <span class="pill">{t.totalDone} {prog ? percent(prog.doneTotal, prog.total) : '0'}%</span>
+        {sel && selected !== null && (
+          <span class="pill accent">{sel.code} · {prog ? percent(prog.doneBy[selected], prog.countBy[selected]) : '0'}%</span>
+        )}
       </header>
 
-      <div class="stage" ref={wrapRef}>
+      <div class={`stage${marking ? ' marking' : ''}`} ref={wrapRef}>
         <canvas ref={canvasRef} class="scheme" />
         <canvas
           ref={miniRef}
@@ -178,7 +320,14 @@ export function Viewer({ stored, settings, dark, env, onSettings, onImport, onOp
           onPointerMove={(e) => e.buttons && miniJump(e, rRef.current)}
         />
         {settings.mode === 'selectedOnly' && selected === null && <div class="hint">{t.selectedOnlyHint}</div>}
-        {sheet === 'view' && <ViewSheet value={settings.mode} onChange={(mode) => onSettings({ mode })} />}
+        {sheet === 'view' && (
+          <ViewSheet
+            value={settings.mode}
+            onChange={(mode) => onSettings({ mode })}
+            progress={settings.progress}
+            onProgress={(progress) => onSettings({ progress })}
+          />
+        )}
         {sheet === 'grid' && <GridSheet value={settings.grid} onChange={(grid) => onSettings({ grid })} />}
         {sheet === 'threads' && (
           <ThreadsSheet
@@ -186,6 +335,8 @@ export function Viewer({ stored, settings, dark, env, onSettings, onImport, onOp
             symbols={symbols}
             order={order}
             selected={selected}
+            left={left}
+            finished={finished}
             sort={settings.threadSort}
             onSort={(threadSort) => onSettings({ threadSort })}
             onPick={(k) => {
@@ -218,18 +369,40 @@ export function Viewer({ stored, settings, dark, env, onSettings, onImport, onOp
           <div class="threadbar">
             <span class="sw" style={{ background: css(sel.rgb), color: inkOf(sel.rgb) }}>{symbols[selected]}</span>
             <span class="tb-text" title={sel.name}>
-              <b>{sel.code}</b> · {t.left} {plural(sel.count)}
+              <b>{sel.code}</b> · {left(selected) ? `${t.left} ${plural(left(selected))}` : t.allDone}
             </span>
             <button class="primary small" onClick={goNearby} title={t.nearbyTitle}>
               <Icon name="target" /> {t.nearby}
             </button>
           </div>
         )}
-        <Strip palette={palette} order={order} selected={selected} onPick={(k) => choose(k === selected ? null : k)} />
+        {marking && (
+          <div class="markbar">
+            <div class="mb-group">
+              <button class={`mb${tool === 'brush' ? ' on' : ''}`} onClick={() => setTool('brush')}>
+                <Icon name="brush" /> {t.toolBrush}
+              </button>
+              <button class={`mb${tool === 'square' ? ' on' : ''}`} onClick={() => setTool('square')}>
+                <Icon name="square" /> {t.toolSquare}
+              </button>
+            </div>
+            <button class={`mb erase${erase ? ' on' : ''}`} onClick={() => setErase((v) => !v)} aria-pressed={erase}>
+              <Icon name="eraser" /> {t.toolErase}
+            </button>
+            <span class="grow" />
+            <button class="icon-btn" disabled={!prog?.canUndo} onClick={() => history('undo')} aria-label={t.undo}>
+              <Icon name="undo" />
+            </button>
+            <button class="icon-btn" disabled={!prog?.canRedo} onClick={() => history('redo')} aria-label={t.redo}>
+              <Icon name="redo" />
+            </button>
+          </div>
+        )}
+        <Strip palette={palette} order={order} selected={selected} finished={finished} onPick={(k) => choose(k === selected ? null : k)} />
         <nav class="toolbar">
           <ToolButton icon="eye" label={t.tabView} active={sheet === 'view'} onClick={() => toggleSheet('view')} />
           <ToolButton icon="grid" label={t.tabGrid} active={sheet === 'grid'} onClick={() => toggleSheet('grid')} />
-          <ToolButton icon="pencil" label={t.tabMark} active={false} onClick={() => setToast(t.markLater)} />
+          <ToolButton icon="pencil" label={t.tabMark} active={marking} onClick={toggleMarking} />
           <ToolButton icon="list" label={t.tabThreads} active={sheet === 'threads'} onClick={() => toggleSheet('threads')} />
           <ToolButton icon="dots" label={t.tabMore} active={sheet === 'more'} onClick={() => toggleSheet('more')} />
         </nav>
@@ -252,7 +425,13 @@ function ToolButton(p: { icon: string; label: string; active: boolean; onClick()
   );
 }
 
-function Strip(p: { palette: StoredPattern['pattern']['palette']; order: number[]; selected: number | null; onPick(k: number): void }) {
+function Strip(p: {
+  palette: StoredPattern['pattern']['palette'];
+  order: number[];
+  selected: number | null;
+  finished(k: number): boolean;
+  onPick(k: number): void;
+}) {
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (p.selected === null) return;
@@ -265,7 +444,7 @@ function Strip(p: { palette: StoredPattern['pattern']['palette']; order: number[
         const c = p.palette[k];
         return (
           <button key={k} data-k={k} class={`chip${k === p.selected ? ' on' : ''}`} onClick={() => p.onPick(k)} title={`${c.code} ${c.name}`}>
-            <span class="sw" style={{ background: css(c.rgb) }} />
+            <span class="sw" style={{ background: css(c.rgb), color: inkOf(c.rgb) }}>{p.finished(k) && <Icon name="check" size={16} />}</span>
             <span class="code">{c.code}</span>
           </button>
         );

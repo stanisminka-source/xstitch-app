@@ -20,6 +20,8 @@ export const ru = {
   nearby: 'рядом',
   nearbyTitle: 'Перейти к ближайшему участку этого цвета',
   allVisible: 'Все участки этого цвета уже на экране',
+  colorDone: 'Этот цвет вышит полностью 🎉',
+  allDone: 'вышито полностью',
 
   // нижняя панель
   tabView: 'Вид',
@@ -27,7 +29,14 @@ export const ru = {
   tabMark: 'Отметить',
   tabThreads: 'Нитки',
   tabMore: 'Ещё',
-  markLater: 'Отметка вышитого появится на этапе 2',
+  markHint: 'Ведите пальцем по вышитому. Двигать схему — двумя пальцами',
+  toolBrush: 'Кисть',
+  toolSquare: '10×10',
+  toolErase: 'Ластик',
+  undo: 'Отменить',
+  redo: 'Вернуть',
+  progressTitle: 'Вышитое:',
+  progressModes: { reveal: 'Проявлять', fade: 'Приглушать', off: 'Не показывать' },
 
   modes: {
     colorSymbol: 'Цвет и символ',
@@ -46,6 +55,8 @@ export const ru = {
   sortCode: 'По номеру',
   sortCount: 'По количеству',
   crosses: 'кр.',
+  of: 'из',
+  done: 'вышито',
   nothingFound: 'Такого номера в схеме нет',
 
   // ещё

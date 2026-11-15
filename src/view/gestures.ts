@@ -1,14 +1,28 @@
 // Жесты на схеме: один палец — прокрутка (с инерцией), два — масштаб,
 // короткое касание — выбор клетки. Колесо мыши/трекпад — масштаб (для компьютера).
+// В режиме отметки один палец рисует (а долгое нажатие — пятно), двигают схему двумя.
 import { RULER, type SchemeRenderer } from './renderer';
+
+export interface StrokeHandlers {
+  start(px: number, py: number): void;
+  move(px: number, py: number): void;
+  end(): void;
+  /** Палец оказался не рисующим (второй палец, долгое нажатие) — откатить штрих. */
+  cancel(): void;
+  longPress(px: number, py: number): void;
+}
 
 export interface GestureHandlers {
   onTap(px: number, py: number): void;
   onUserMove(): void;
+  /** Включён ли сейчас режим отметки. */
+  marking(): boolean;
+  stroke: StrokeHandlers;
 }
 
 const TAP_SLOP = 8;
 const TAP_MS = 350;
+const LONG_MS = 450;
 
 export function attachGestures(el: HTMLElement, r: SchemeRenderer, h: GestureHandlers): () => void {
   const pts = new Map<number, { x: number; y: number }>();
@@ -20,6 +34,10 @@ export function attachGestures(el: HTMLElement, r: SchemeRenderer, h: GestureHan
   let vel = { x: 0, y: 0 };
   let lastMove = 0;
   let inertia = 0;
+  let stroking = false;
+  let strokeMoved = false;
+  let longFired = false;
+  let longTimer = 0;
 
   const local = (e: PointerEvent | WheelEvent) => {
     const b = el.getBoundingClientRect();
@@ -33,6 +51,13 @@ export function attachGestures(el: HTMLElement, r: SchemeRenderer, h: GestureHan
     r.interacting = false;
     r.invalidate();
   };
+  const stopStroke = (keep: boolean) => {
+    clearTimeout(longTimer);
+    if (!stroking) return;
+    stroking = false;
+    if (keep) h.stroke.end();
+    else h.stroke.cancel();
+  };
 
   const down = (e: PointerEvent) => {
     el.setPointerCapture(e.pointerId);
@@ -45,9 +70,24 @@ export function attachGestures(el: HTMLElement, r: SchemeRenderer, h: GestureHan
       downPos = p;
       moved = false;
       multi = false;
+      longFired = false;
       vel = { x: 0, y: 0 };
       lastMove = downAt;
+      if (h.marking() && (e.pointerType !== 'mouse' || e.button === 0)) {
+        stroking = true;
+        strokeMoved = false;
+        r.interacting = false;
+        h.stroke.start(p.x, p.y);
+        longTimer = window.setTimeout(() => {
+          if (!stroking || strokeMoved || pts.size !== 1) return;
+          stopStroke(false);
+          longFired = true;
+          h.stroke.longPress(downPos.x, downPos.y);
+        }, LONG_MS);
+      }
     } else {
+      // второй палец: это прокрутка или масштаб, а не рисование
+      stopStroke(false);
       multi = true;
       pinch = pinchState();
     }
@@ -73,7 +113,17 @@ export function attachGestures(el: HTMLElement, r: SchemeRenderer, h: GestureHan
       r.invalidate();
       return;
     }
+    if (pts.size === 1 && (stroking || longFired)) {
+      if (!stroking) return;
+      if (!strokeMoved && Math.hypot(p.x - downPos.x, p.y - downPos.y) >= TAP_SLOP) {
+        strokeMoved = true;
+        clearTimeout(longTimer);
+      }
+      h.stroke.move(p.x, p.y);
+      return;
+    }
     if (pts.size === 1 && !multi) {
+      if (h.marking()) return;
       if (!moved && Math.hypot(p.x - downPos.x, p.y - downPos.y) < TAP_SLOP) return;
       if (!moved) {
         moved = true;
@@ -101,8 +151,15 @@ export function attachGestures(el: HTMLElement, r: SchemeRenderer, h: GestureHan
     }
     if (pts.size > 0) return;
     pinch = null;
+    if (stroking || longFired) {
+      if (longFired) h.stroke.end(); // пятно уже отмечено — запоминаем его для отмены
+      else stopStroke(true);
+      longFired = false;
+      end();
+      return;
+    }
     const quick = performance.now() - downAt < TAP_MS;
-    if (!moved && !multi && quick && e.type === 'pointerup') {
+    if (!moved && !multi && quick && e.type === 'pointerup' && !h.marking()) {
       end();
       h.onTap(p.x, p.y);
       return;
@@ -160,6 +217,7 @@ export function attachGestures(el: HTMLElement, r: SchemeRenderer, h: GestureHan
   el.addEventListener('gesturestart', prevent);
   return () => {
     stopInertia();
+    clearTimeout(longTimer);
     el.removeEventListener('pointerdown', down);
     el.removeEventListener('pointermove', move);
     el.removeEventListener('pointerup', up);
