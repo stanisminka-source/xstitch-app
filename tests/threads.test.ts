@@ -24,6 +24,8 @@ describe('Расход ниток', () => {
     expect(defaultChoice(p)).toEqual({ fabric: 'aida14', strands: 3 });
     expect(defaultChoice(p, { fabric: 'aida18', strands: 2 })).toEqual({ fabric: 'aida18', strands: 2 });
     expect(defaultChoice({} as Pattern, { fabric: 'nope', strands: 9 })).toEqual({ fabric: 'aida18', strands: 2 });
+    const even = { fabric: { type: 'Evenweave 28 over 2', count: 14, color: 'white' } } as Pattern;
+    expect(defaultChoice(even)).toEqual({ fabric: 'even28', strands: 3 });
   });
 });
 

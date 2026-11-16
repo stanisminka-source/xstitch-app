@@ -46,14 +46,17 @@ export function fabricById(id: string): FabricOption {
   return FABRICS.find((f) => f.id === id) ?? FABRICS[3];
 }
 
-/** Канва по умолчанию — из самой схемы (PDF пишет «Aida 18»), иначе Аида 18. */
+/** Канва по умолчанию — из самой схемы (PDF пишет «Aida 18», конструктор — «Evenweave 28 over 2»), иначе Аида 18. */
 export function defaultChoice(p: Pattern, saved?: unknown): FabricChoice {
   const s = saved as Partial<FabricChoice> | undefined;
   if (s && typeof s.fabric === 'string' && FABRICS.some((f) => f.id === s.fabric) && [1, 2, 3, 4, 5, 6].includes(Number(s.strands))) {
     return { fabric: s.fabric, strands: Number(s.strands) };
   }
   const c = p.fabric?.count;
-  const f = FABRICS.find((x) => x.id.startsWith('aida') && x.count === c) ?? FABRICS[3];
+  // «Evenweave 28 over 2» (count 14) — равномерка, «Hardanger 22» — хардангер, остальное считаем Аидой
+  const type = p.fabric?.type ?? '';
+  const kind = /evenweave|равномерк/i.test(type) ? 'even' : /hardanger|хардангер/i.test(type) ? 'hard' : 'aida';
+  const f = FABRICS.find((x) => x.id.startsWith(kind) && x.count === c) ?? FABRICS.find((x) => x.id.startsWith('aida') && x.count === c) ?? FABRICS[3];
   return { fabric: f.id, strands: recommendedStrands(f.count) };
 }
 

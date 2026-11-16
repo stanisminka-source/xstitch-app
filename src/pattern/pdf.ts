@@ -1,4 +1,5 @@
 // Разбор PDF-схем, напечатанных из Pattern Maker.
+// (PDF из конструктора схем проще: в него вложен готовый файл схемы — см. readPatternAttachment.)
 // Это не универсальный импорт: он опирается на то, как Pattern Maker раскладывает схему.
 // — Страницы схемы: символы — текст в сетке с постоянным шагом, линейки с номерами клеток
 //   сверху (горизонтально) и слева (повёрнуто), в цветной версии под символом — заливка цветом нити.
@@ -20,6 +21,9 @@ export interface PdfPage {
 export interface PdfDoc {
   numPages: number;
   getPage(n: number): Promise<PdfPage>;
+  /** Вложенные файлы PDF (в pdf.js 6 — Map id → сведения, или null). */
+  getAttachments?(): Promise<Map<string, { filename?: string }> | Record<string, { filename?: string }> | null>;
+  getAttachmentContent?(id: string): Promise<Uint8Array | null | undefined>;
 }
 export type PdfOps = Record<
   | 'save' | 'restore' | 'transform' | 'setFillRGBColor' | 'constructPath' | 'fill' | 'eoFill'
@@ -248,6 +252,43 @@ interface PatternPage {
 
 export type PdfParseProgress = (page: number, total: number) => void;
 
+const NOT_A_PATTERN_PDF =
+  'Этот PDF не получилось открыть как схему. Подходят PDF из Pattern Maker и PDF, к которым автор схемы приложил файл для Smile & Stitch. ' +
+  'Если вместе со схемой есть файл .json — откройте его.';
+
+/** Файл схемы, вложенный в PDF (так делает конструктор схем: «<название>.pattern.json»).
+ *  Возвращает разобранный JSON, если среди вложений есть схема формата xstitch-pattern, иначе null. */
+export async function readPatternAttachment(doc: PdfDoc): Promise<Record<string, unknown> | null> {
+  if (!doc.getAttachments || !doc.getAttachmentContent) return null;
+  const list = await doc.getAttachments().catch(() => null);
+  if (!list) return null;
+  const entries: [string, { filename?: string }][] = list instanceof Map ? [...list.entries()] : Object.entries(list);
+  // сначала файлы «….pattern.json», потом прочие .json, остальное — на всякий случай в конце
+  const rank = (e: [string, { filename?: string }]) => {
+    const name = (e[1]?.filename ?? e[0]).toLowerCase();
+    return name.endsWith('.pattern.json') ? 0 : name.endsWith('.json') ? 1 : 2;
+  };
+  entries.sort((a, b) => rank(a) - rank(b));
+  for (const [id] of entries) {
+    const bytes = await doc.getAttachmentContent(id).catch(() => null);
+    if (!bytes?.length) continue;
+    try {
+      const raw: unknown = JSON.parse(new TextDecoder('utf-8').decode(bytes).replace(/^\uFEFF/, ''));
+      if (typeof raw === 'object' && raw !== null && (raw as Record<string, unknown>).format === 'xstitch-pattern') {
+        return raw as Record<string, unknown>;
+      }
+    } catch {
+      // не JSON — пропускаем
+    }
+  }
+  return null;
+}
+
+/** Схема из PDF: вложенный файл схемы, если он есть, иначе разбор PDF Pattern Maker. */
+export async function patternFromPdf(doc: PdfDoc, ops: PdfOps, onProgress?: PdfParseProgress): Promise<Record<string, unknown>> {
+  return (await readPatternAttachment(doc)) ?? (await parsePatternPdf(doc, ops, onProgress));
+}
+
 /** Разбирает PDF Pattern Maker и возвращает объект в формате файла схемы (для parsePattern). */
 export async function parsePatternPdf(doc: PdfDoc, ops: PdfOps, onProgress?: PdfParseProgress): Promise<Record<string, unknown>> {
   let title = '';
@@ -325,7 +366,7 @@ export async function parsePatternPdf(doc: PdfDoc, ops: PdfOps, onProgress?: Pdf
     pages.push({ page: n, gridLeft: leftX, gridTop: topY, syms, top, left, fills });
   }
 
-  if (!legend.length) throw new PatternError('В PDF не нашлась легенда ниток. Пока читаются только схемы из Pattern Maker.');
+  if (!legend.length) throw new PatternError(NOT_A_PATTERN_PDF);
   if (!pages.length) throw new PatternError('В PDF не нашлись страницы схемы с символами.');
   if (!width || !height) throw new PatternError('В PDF не указан размер схемы («…w X …h Stitches»).');
 
