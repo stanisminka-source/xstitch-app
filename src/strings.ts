@@ -42,6 +42,8 @@ export const ru = {
   redo: 'Вернуть',
   progressTitle: 'Вышитое:',
   progressModes: { reveal: 'Проявлять', fade: 'Приглушать', off: 'Не показывать' },
+  linesTitle: 'Линии:',
+  linesModes: { off: 'Без линий', on: 'С линиями', bright: 'Линии ярко' },
 
   modes: {
     colorSymbol: 'Цвет и символ',

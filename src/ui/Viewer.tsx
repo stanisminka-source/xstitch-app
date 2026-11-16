@@ -75,7 +75,7 @@ export function Viewer({ stored, settings, dark, env, onSettings, onImport, onOp
 
   useWakeLock(settings.wakeLock);
 
-  const style = { mode: settings.mode, grid: settings.grid, dim: settings.dim, selected, dark, progress: settings.progress };
+  const style = { mode: settings.mode, grid: settings.grid, dim: settings.dim, selected, dark, progress: settings.progress, lines: settings.lines };
 
   // Создаём отрисовщик, восстанавливаем место и выбранную нить.
   useEffect(() => {
@@ -369,7 +369,7 @@ export function Viewer({ stored, settings, dark, env, onSettings, onImport, onOp
 
   useEffect(() => {
     rRef.current?.setStyle(style);
-  }, [settings.mode, settings.grid, settings.dim, selected, dark, settings.progress]);
+  }, [settings.mode, settings.grid, settings.dim, selected, dark, settings.progress, settings.lines]);
 
   useEffect(() => {
     rRef.current?.invalidate();
@@ -590,6 +590,9 @@ export function Viewer({ stored, settings, dark, env, onSettings, onImport, onOp
             onChange={(mode) => onSettings({ mode })}
             progress={settings.progress}
             onProgress={(progress) => onSettings({ progress })}
+            hasLines={pattern.backstitch.length > 0}
+            lines={settings.lines}
+            onLines={(lines) => onSettings({ lines })}
           />
         )}
         {sheet === 'grid' && <GridSheet value={settings.grid} onChange={(grid) => onSettings({ grid })} />}

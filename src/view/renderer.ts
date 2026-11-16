@@ -4,7 +4,7 @@
 // бэкстича рисуются поверх на каждом кадре: это дёшево и всегда чётко.
 import type { Pattern } from '../pattern/format';
 import { contrastInk, css, darken, luminance, mix, type RGB } from '../lib/color';
-import type { GridMode, ProgressMode, ViewMode } from '../store/settings';
+import type { GridMode, LinesMode, ProgressMode, ViewMode } from '../store/settings';
 import { Viewport } from './viewport';
 
 export interface RenderStyle {
@@ -15,6 +15,17 @@ export interface RenderStyle {
   selected: number | null;
   dark: boolean;
   progress: ProgressMode;
+  lines: LinesMode;
+}
+
+/** Как рисовать линии при масштабе s (CSS px на клетку): толщина, обводка
+ *  и насколько приглушить схему под ними (0 — не приглушать). */
+export function lineLook(mode: LinesMode, s: number): { show: boolean; width: number; halo: number; veil: number } {
+  if (mode === 'off') return { show: false, width: 0, halo: 0, veil: 0 };
+  if (mode === 'on') return { show: true, width: Math.max(1.5, s * 0.16), halo: 0, veil: 0 };
+  // ярко: линии толще и с тонкой обводкой, схема под ними — бледнее
+  const width = Math.max(2.5, s * 0.24);
+  return { show: true, width, halo: width + 2 * Math.max(1, s * 0.05), veil: 0.62 };
 }
 
 export const RULER = 20; // ширина линеек, CSS px
@@ -154,7 +165,7 @@ export class SchemeRenderer {
     const s = this.style;
     if (
       s.mode === style.mode && s.grid === style.grid && s.dim === style.dim &&
-      s.selected === style.selected && s.dark === style.dark && s.progress === style.progress
+      s.selected === style.selected && s.dark === style.dark && s.progress === style.progress && s.lines === style.lines
     ) return;
     const tilesChange = s.mode !== style.mode || s.dim !== style.dim || s.selected !== style.selected || s.progress !== style.progress;
     this.style = style;
@@ -604,7 +615,7 @@ export class SchemeRenderer {
       this.evict();
     }
 
-    this.drawBackstitch(g);
+    this.drawBackstitch(g, snap);
     if (this.drawPulse(g)) again = true;
     this.drawGrid(g, snap);
     this.overlay?.(g);
@@ -620,19 +631,41 @@ export class SchemeRenderer {
     for (let i = 0; i < entries.length - MAX_TILES; i++) this.tiles.delete(entries[i][0]);
   }
 
-  private drawBackstitch(g: CanvasRenderingContext2D): void {
+  private drawBackstitch(g: CanvasRenderingContext2D, snap: (v: number) => number): void {
     const lines = this.pattern.backstitch;
     if (!lines.length) return;
+    const look = lineLook(this.style.lines, this.vp.s);
+    if (!look.show) return;
     const { s, ox, oy } = this.vp;
+    const W = this.pattern.width;
+    const H = this.pattern.height;
+    if (look.veil) {
+      // схема бледнеет целиком — клетки, символы и отметки вышитого вместе, поэтому всё остаётся понятным
+      g.fillStyle = css(this.base);
+      g.globalAlpha = look.veil;
+      g.fillRect(snap(ox), snap(oy), snap(ox + W * s) - snap(ox), snap(oy + H * s) - snap(oy));
+      g.globalAlpha = 1;
+    }
     const index = new Map(this.pattern.palette.map((c, i) => [c.id, i]));
-    g.lineCap = 'round';
-    g.lineWidth = Math.max(1.5, s * 0.16);
-    for (const l of lines) {
-      g.strokeStyle = this.shades.full.css[index.get(l.color)!];
+    const path = (l: (typeof lines)[number]) => {
       g.beginPath();
       g.moveTo(ox + l.x1 * s, oy + l.y1 * s);
       g.lineTo(ox + l.x2 * s, oy + l.y2 * s);
       g.stroke();
+    };
+    g.lineCap = 'round';
+    if (look.halo) {
+      // обводка: у тёмных линий светлая, у светлых (белых, жёлтых) — тёмная, чтобы линия была видна на любом фоне
+      g.lineWidth = look.halo;
+      for (const l of lines) {
+        g.strokeStyle = luminance(this.rgb[index.get(l.color)!]) > 0.6 ? 'rgba(40,36,30,0.75)' : 'rgba(255,255,255,0.9)';
+        path(l);
+      }
+    }
+    g.lineWidth = look.width;
+    for (const l of lines) {
+      g.strokeStyle = this.shades.full.css[index.get(l.color)!];
+      path(l);
     }
   }
 

@@ -3,7 +3,7 @@ import type { AppEnv } from '../App';
 import { css, inkOf } from '../lib/color';
 import type { PaletteColor } from '../pattern/format';
 import { db } from '../store/db';
-import { PROGRESS_MODES, type GridMode, type ProgressMode, type Settings, type ThreadSort, type ViewMode } from '../store/settings';
+import { LINES_MODES, PROGRESS_MODES, type GridMode, type LinesMode, type ProgressMode, type Settings, type ThreadSort, type ViewMode } from '../store/settings';
 import { plural, t } from '../strings';
 import { crossUnits, FABRICS, fabricById, finishedSize, recommendedStrands, skeinsToBuy, type FabricChoice } from '../pattern/threads';
 import { Icon } from './Icon';
@@ -42,7 +42,16 @@ function hex(h: string): [number, number, number] {
   return [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)];
 }
 
-export function ViewSheet(p: { value: ViewMode; onChange(m: ViewMode): void; progress: ProgressMode; onProgress(m: ProgressMode): void }) {
+export function ViewSheet(p: {
+  value: ViewMode;
+  onChange(m: ViewMode): void;
+  progress: ProgressMode;
+  onProgress(m: ProgressMode): void;
+  /** Переключатель линий — только у схем, где линии есть. */
+  hasLines: boolean;
+  lines: LinesMode;
+  onLines(m: LinesMode): void;
+}) {
   return (
     <div class="sheet">
       <div class="row-sheet">
@@ -63,6 +72,18 @@ export function ViewSheet(p: { value: ViewMode; onChange(m: ViewMode): void; pro
           ))}
         </div>
       </div>
+      {p.hasLines && (
+        <div class="sheet-row">
+          <span class="muted small">{t.linesTitle}</span>
+          <div class="segs">
+            {LINES_MODES.map((m) => (
+              <button key={m} class={`seg${m === p.lines ? ' on' : ''}`} onClick={() => p.onLines(m)}>
+                {t.linesModes[m]}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

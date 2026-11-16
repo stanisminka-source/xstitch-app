@@ -4,6 +4,7 @@ import { byDistance, findRegions } from '../src/pattern/regions';
 import { assignSymbols, SYMBOL_SET } from '../src/pattern/symbols';
 import { MAX_SCALE, Viewport } from '../src/view/viewport';
 import { normalizeSettings } from '../src/store/settings';
+import { lineLook } from '../src/view/renderer';
 
 describe('Viewport', () => {
   const make = () => {
@@ -108,5 +109,31 @@ describe('Символы и цвета', () => {
     expect(normalizeSettings(null).mode).toBe('colorSymbol');
     expect(normalizeSettings({ dim: 7 }).dim).toBe(0.7);
     expect(normalizeSettings({ grid: 'soft' }).grid).toBe('soft');
+  });
+});
+
+describe('Линии (бэкстич)', () => {
+  it('по умолчанию показываются; неизвестное значение настройки — тоже «с линиями»', () => {
+    expect(normalizeSettings(null).lines).toBe('on');
+    expect(normalizeSettings({ lines: 'bright' }).lines).toBe('bright');
+    expect(normalizeSettings({ lines: 'off' }).lines).toBe('off');
+    expect(normalizeSettings({ lines: 'zzz' }).lines).toBe('on');
+  });
+
+  it('три режима: без линий, обычные, яркие поверх бледной схемы', () => {
+    const off = lineLook('off', 20);
+    const on = lineLook('on', 20);
+    const bright = lineLook('bright', 20);
+    expect(off.show).toBe(false);
+    expect(on).toEqual({ show: true, width: 20 * 0.16, halo: 0, veil: 0 });
+    expect(bright.show).toBe(true);
+    // ярко: толще, со светлой обводкой шире самой линии, схема под ними заметно бледнее
+    expect(bright.width).toBeGreaterThan(on.width);
+    expect(bright.halo).toBeGreaterThan(bright.width);
+    expect(bright.veil).toBeGreaterThan(0.4);
+    expect(bright.veil).toBeLessThan(0.9);
+    // на мелком масштабе линии всё равно не тоньше пары пикселей
+    expect(lineLook('bright', 1).width).toBeGreaterThanOrEqual(2.5);
+    expect(lineLook('on', 1).width).toBeGreaterThanOrEqual(1.5);
   });
 });
