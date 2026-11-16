@@ -70,6 +70,19 @@ export function crossesPerSkein(count: number, strands: number): number {
   return 3090 * (count / 18) * (2 / strands);
 }
 
+/** Сколько нитки уходит, в полных крестиках: полукрест — половина крестика. */
+export function crossUnits(stitches: number, halves: number): number {
+  return stitches - halves / 2;
+}
+
+/** Сколько полукрестиков каждого цвета (по индексу палитры). */
+export function halvesByColor(idx: Int16Array, half: Uint8Array | undefined, nColors: number): Int32Array {
+  const out = new Int32Array(nColors);
+  if (!half) return out;
+  for (let i = 0; i < idx.length; i++) if (half[i] && idx[i] >= 0) out[idx[i]]++;
+  return out;
+}
+
 export function skeins(crosses: number, count: number, strands: number): number {
   return crosses / crossesPerSkein(count, strands);
 }
@@ -120,19 +133,29 @@ export interface AreaRow {
   k: number;
   total: number;
   left: number;
+  /** Из них полукрестиков: всего и невышитых. */
+  halfTotal: number;
+  halfLeft: number;
 }
 
-/** Сколько крестиков каждого цвета на участке и сколько из них ещё не вышито. */
-export function areaCounts(idx: Int16Array, done: Uint8Array, mask: Uint8Array, nColors: number): AreaRow[] {
+/** Сколько крестиков каждого цвета на участке и сколько из них ещё не вышито (полукрестики — тоже, отдельно). */
+export function areaCounts(idx: Int16Array, done: Uint8Array, mask: Uint8Array, nColors: number, half?: Uint8Array): AreaRow[] {
   const total = new Int32Array(nColors);
   const left = new Int32Array(nColors);
+  const halfTotal = new Int32Array(nColors);
+  const halfLeft = new Int32Array(nColors);
   for (let i = 0; i < idx.length; i++) {
     const k = idx[i];
     if (k < 0 || !mask[i]) continue;
+    const h = half?.[i] ? 1 : 0;
     total[k]++;
-    if (!done[i]) left[k]++;
+    halfTotal[k] += h;
+    if (!done[i]) {
+      left[k]++;
+      halfLeft[k] += h;
+    }
   }
   const rows: AreaRow[] = [];
-  for (let k = 0; k < nColors; k++) if (total[k]) rows.push({ k, total: total[k], left: left[k] });
+  for (let k = 0; k < nColors; k++) if (total[k]) rows.push({ k, total: total[k], left: left[k], halfTotal: halfTotal[k], halfLeft: halfLeft[k] });
   return rows.sort((a, b) => b.left - a.left || b.total - a.total);
 }

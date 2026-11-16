@@ -2,7 +2,7 @@
 import { useState } from 'preact/hooks';
 import { css, inkOf } from '../lib/color';
 import type { PaletteColor } from '../pattern/format';
-import { compareCodes, fabricById, skeins, skeinsToBuy, type AreaRow, type FabricChoice } from '../pattern/threads';
+import { compareCodes, crossUnits, fabricById, skeins, skeinsToBuy, type AreaRow, type FabricChoice } from '../pattern/threads';
 import type { ThreadSort } from '../store/settings';
 import { plural, t } from '../strings';
 import { Icon } from './Icon';
@@ -25,11 +25,11 @@ export function AreaSheet({ rows, palette, symbols, fabric, sort, onSort, onPick
   const fab = fabricById(fabric.fabric);
   // для покупки удобнее по возрастанию номера; «по количеству» — как в общем списке ниток
   const list = rows
-    .map((r) => ({ ...r, n: onlyLeft ? r.left : r.total }))
+    .map((r) => ({ ...r, n: onlyLeft ? r.left : r.total, h: onlyLeft ? r.halfLeft : r.halfTotal }))
     .filter((r) => r.n > 0)
     .sort((a, b) => (sort === 'count' ? b.n - a.n : compareCodes(palette[a.k].code, palette[b.k].code)));
   const crosses = list.reduce((s, r) => s + r.n, 0);
-  const buy = list.reduce((s, r) => s + skeinsToBuy(r.n, fab.count, fabric.strands), 0);
+  const buy = list.reduce((s, r) => s + skeinsToBuy(crossUnits(r.n, r.h), fab.count, fabric.strands), 0);
   return (
     <div class="sheet tall">
       <div class="sheet-head">
@@ -59,8 +59,11 @@ export function AreaSheet({ rows, palette, symbols, fabric, sort, onSort, onPick
               <span class="sw" style={{ background: css(c.rgb), color: inkOf(c.rgb) }}>{symbols[r.k]}</span>
               <span class="code">{c.code}</span>
               <span class="name">{c.name}</span>
-              <span class="count">{plural(r.n)} {t.crosses}</span>
-              <span class="skeins">{t.areaSkeins(fmt(skeins(r.n, fab.count, fabric.strands)))}</span>
+              <span class="count">
+                {plural(r.n)} {t.crosses}
+                {r.h ? `, ${t.halves(plural(r.h))}` : ''}
+              </span>
+              <span class="skeins">{t.areaSkeins(fmt(skeins(crossUnits(r.n, r.h), fab.count, fabric.strands)))}</span>
             </button>
           );
         })}

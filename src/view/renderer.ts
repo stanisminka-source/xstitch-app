@@ -26,6 +26,8 @@ const TILE_PX = 512; // примерный размер плитки в пикс
 const MAX_TILES = 64;
 const SYMBOL_MIN_CSS = 9; // мельче — символы не читаются, не рисуем
 const TINT = 0.6; // насколько бледнее невышитые клетки в режиме «проявление»
+const HALF_LIGHT = 0.72; // полукрест — светлая клетка с косой чертой «/» цвета нитки
+const HALF_SYM = 0.56; // символ полукреста — помельче, в верхнем левом уголке
 const FONT = '-apple-system, system-ui, Roboto, "Segoe UI", "Noto Sans", sans-serif';
 
 type AnyCanvas = HTMLCanvasElement;
@@ -61,6 +63,8 @@ interface ShadeSet {
   rgb: RGB[];
   css: string[];
   ink: ('black' | 'white')[];
+  /** Светлый фон клетки с полукрестом. */
+  light: string[];
 }
 
 /** Как выглядит одна клетка. */
@@ -82,8 +86,8 @@ function makeCanvas(w: number, h: number): AnyCanvas {
   return c;
 }
 
-function shadeSet(rgb: RGB[]): ShadeSet {
-  return { rgb, css: rgb.map(css), ink: rgb.map(contrastInk) };
+function shadeSet(rgb: RGB[], base: RGB): ShadeSet {
+  return { rgb, css: rgb.map(css), ink: rgb.map(contrastInk), light: rgb.map((c) => css(mix(c, base, HALF_LIGHT))) };
 }
 
 export class SchemeRenderer {
@@ -91,6 +95,8 @@ export class SchemeRenderer {
   /** Индекс цвета в палитре для каждой клетки, −1 — пусто. */
   readonly idx: Int16Array;
   readonly rgb: RGB[];
+  /** Полукрестики: 1 — в клетке полукрест «/». */
+  readonly half: Uint8Array;
   /** Пользователь сейчас двигает схему — не перерисовываем плитки под новый масштаб. */
   interacting = false;
   onViewChange?: () => void;
@@ -108,6 +114,8 @@ export class SchemeRenderer {
   private flatDirty = false;
   private flatUndone: RGB[] = [];
   private flatDone: RGB[] = [];
+  private flatUndoneHalf: RGB[] = [];
+  private flatDoneHalf: RGB[] = [];
   private tiles = new Map<string, Tile>();
   private atlases = new Map<number, Atlas>();
   private activeP = 0;
@@ -135,6 +143,7 @@ export class SchemeRenderer {
       this.idx[i] = v < 0 ? -1 : index.get(v)!;
     }
     this.rgb = pattern.palette.map((c) => c.rgb);
+    this.half = pattern.half ?? new Uint8Array(pattern.cells.length);
     this.style = style;
     this.prepareStyle();
   }
@@ -205,7 +214,7 @@ export class SchemeRenderer {
     if (img) {
       for (const i of cells) {
         const k = this.idx[i];
-        const c = k < 0 ? this.base : this.done[i] ? this.flatDone[k] : this.flatUndone[k];
+        const c = this.flatAt(i, k);
         img.data[i * 4] = c[0];
         img.data[i * 4 + 1] = c[1];
         img.data[i * 4 + 2] = c[2];
@@ -247,13 +256,16 @@ export class SchemeRenderer {
     this.fadeRgb = mix(base, [150, 148, 144], 0.5); // заметно серые — не путать с пустой канвой
     const tint = this.rgb.map((c) => mix(c, base, TINT));
     this.shades = {
-      full: shadeSet(this.rgb),
-      dim: shadeSet(this.rgb.map((c) => mix(c, base, dim))),
-      tint: shadeSet(tint),
-      dimTint: shadeSet(tint.map((c) => mix(c, base, dim))),
+      full: shadeSet(this.rgb, base),
+      dim: shadeSet(this.rgb.map((c) => mix(c, base, dim)), base),
+      tint: shadeSet(tint, base),
+      dimTint: shadeSet(tint.map((c) => mix(c, base, dim)), base),
     };
     this.flatUndone = this.rgb.map((_, k) => this.flatColor(k, false));
     this.flatDone = this.rgb.map((_, k) => this.flatColor(k, true));
+    // полукрест на мелком масштабе — тот же цвет, но наполовину светлее
+    this.flatUndoneHalf = this.flatUndone.map((c) => (c === this.fadeRgb ? c : mix(c, base, 0.5)));
+    this.flatDoneHalf = this.flatDone.map((c) => (c === this.fadeRgb ? c : mix(c, base, 0.5)));
     this.styleVersion++;
     this.tiles.clear();
     this.flat = null;
@@ -297,6 +309,13 @@ export class SchemeRenderer {
     return this.base;
   }
 
+  /** Цвет клетки i (цвет k) на мелком масштабе. */
+  private flatAt(i: number, k: number): RGB {
+    if (k < 0) return this.base;
+    if (this.half[i]) return this.done[i] ? this.flatDoneHalf[k] : this.flatUndoneHalf[k];
+    return this.done[i] ? this.flatDone[k] : this.flatUndone[k];
+  }
+
   /** Картинка «одна клетка — один пиксель» для мелкого масштаба и мини-карты. */
   private buildFlat(): AnyCanvas {
     const { width: w, height: h } = this.pattern;
@@ -305,7 +324,7 @@ export class SchemeRenderer {
     const img = g.createImageData(w, h);
     for (let i = 0; i < this.idx.length; i++) {
       const k = this.idx[i];
-      const col = k < 0 ? this.base : this.done[i] ? this.flatDone[k] : this.flatUndone[k];
+      const col = this.flatAt(i, k);
       img.data[i * 4] = col[0];
       img.data[i * 4 + 1] = col[1];
       img.data[i * 4 + 2] = col[2];
@@ -389,7 +408,7 @@ export class SchemeRenderer {
       for (let x = 0; x < tw; x++) {
         const i = (y0 + y) * W + x0 + x;
         const k = this.idx[i];
-        if (k >= 0) this.drawCell(g, k, this.done[i] === 1, x * p, y * p, p, atlas);
+        if (k >= 0) this.drawCell(g, k, this.done[i] === 1, this.half[i] === 1, x * p, y * p, p, atlas);
       }
     }
     return { canvas, used: 0, p, x0, y0, w: tw, h: th };
@@ -413,14 +432,18 @@ export class SchemeRenderer {
       for (const [cx, cy] of [[px, py], [px + p, py], [px, py + p], [px + p, py + p]]) g.fillRect(cx - r, cy - r, r * 2, r * 2);
     }
     const k = this.idx[i];
-    if (k >= 0) this.drawCell(g, k, this.done[i] === 1, px, py, p, atlas);
+    if (k >= 0) this.drawCell(g, k, this.done[i] === 1, this.half[i] === 1, px, py, p, atlas);
     g.restore();
   }
 
-  private drawCell(g: CanvasRenderingContext2D, k: number, isDone: boolean, px: number, py: number, p: number, atlas: Atlas | null): void {
+  private drawCell(g: CanvasRenderingContext2D, k: number, isDone: boolean, isHalf: boolean, px: number, py: number, p: number, atlas: Atlas | null): void {
     const L = this.look(k, isDone);
     if (L === NONE) return;
     const sh = this.shades[L.shade];
+    if (isHalf) {
+      this.drawHalf(g, k, L, sh, px, py, p, atlas);
+      return;
+    }
     if (L.kind === 'fill') {
       g.fillStyle = sh.css[k];
       g.fillRect(px, py, p, p);
@@ -453,6 +476,51 @@ export class SchemeRenderer {
     if (L.ring && p >= 6) {
       const ring = Math.max(1, p * 0.07);
       g.strokeStyle = L.kind === 'fill' && sh.ink[k] === 'white' ? '#fff' : css(INK);
+      g.lineWidth = ring;
+      g.beginPath();
+      g.arc(px + p / 2, py + p / 2, p * 0.42 - ring / 2, 0, Math.PI * 2);
+      g.stroke();
+    }
+  }
+
+  /** Полукрест: косая черта «/» (снизу слева вверх направо) цветом нитки на светлой клетке
+   *  и маленький символ в верхнем левом уголке — как на листах PDF конструктора схем. */
+  private drawHalf(g: CanvasRenderingContext2D, k: number, L: Look, sh: ShadeSet, px: number, py: number, p: number, atlas: Atlas | null): void {
+    if (L.kind === 'fade') {
+      g.fillStyle = css(this.fadeRgb);
+      g.fillRect(px, py, p, p);
+      return;
+    }
+    if (L.kind === 'fill') {
+      g.fillStyle = sh.light[k];
+      g.fillRect(px, py, p, p);
+    }
+    // черта: в режиме «вышивка» — как стежок крестика, иначе потоньше
+    const stitch = L.kind === 'cross';
+    const c = sh.rgb[k];
+    const inset = stitch ? p * 0.14 : p * 0.06;
+    g.lineCap = stitch ? 'round' : 'butt';
+    g.lineWidth = Math.max(1, p * (stitch ? 0.26 : 0.13));
+    g.strokeStyle = L.sym === 0 ? css(mix(INK, this.base, 0.35)) : css(stitch ? c : luminance(c) > 0.75 ? darken(c, 0.3) : c);
+    g.globalAlpha = L.kind === 'none' ? L.alpha : 1;
+    g.beginPath();
+    g.moveTo(px + inset, py + p - inset);
+    g.lineTo(px + p - inset, py + inset);
+    g.stroke();
+    g.globalAlpha = 1;
+    if (atlas && L.sym >= 0 && (p * HALF_SYM) / this.dpr >= 6) {
+      // на светлой клетке символ чёрный (или цвета нити в режиме «цветные символы»)
+      const v = L.sym === 2 ? 2 : 0;
+      const sx = (k % atlas.cols) * p;
+      const sy = (v * atlas.rowsPerVariant + Math.floor(k / atlas.cols)) * p;
+      const q = p * HALF_SYM;
+      g.globalAlpha = L.alpha;
+      g.drawImage(atlas.canvas, sx, sy, p, p, px + p * 0.02, py + p * 0.02, q, q);
+      g.globalAlpha = 1;
+    }
+    if (L.ring && p >= 6) {
+      const ring = Math.max(1, p * 0.07);
+      g.strokeStyle = css(INK);
       g.lineWidth = ring;
       g.beginPath();
       g.arc(px + p / 2, py + p / 2, p * 0.42 - ring / 2, 0, Math.PI * 2);

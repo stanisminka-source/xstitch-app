@@ -1,6 +1,8 @@
 // Формат файла схемы (см. TZ.md, раздел «Формат схемы»).
-// Версия 1 — только полные крестики. Поле backstitch необязательное:
-// оно заложено заранее для схем с линиями (бэкстичем).
+// Версия 1. Поле backstitch необязательное: линии (бэкстич).
+// Поле half необязательное: полукрестики — по строке на ряд клеток, «/» — полукрест (одна диагональ
+// снизу слева вверх направо), любой другой знак — полный крестик. Программы, которые поле half
+// не знают, просто покажут такие клетки полными крестиками.
 
 export interface PaletteColor {
   id: number;
@@ -44,6 +46,8 @@ export interface Pattern {
   /** id цвета в каждой клетке, построчно (y * width + x); -1 — пусто. */
   cells: Int16Array;
   backstitch: BackstitchLine[];
+  /** Полукрестики: 1 — в клетке полукрест, 0 — полный крестик (по клеткам, как cells). Нет — всё полное. */
+  half?: Uint8Array;
   /** Листы PDF, если схема загружена из PDF. */
   sheets?: Sheet[];
 }
@@ -126,6 +130,23 @@ export function parsePattern(raw: unknown): Pattern {
     });
   }
 
+  let half: Uint8Array | undefined;
+  if (raw.half !== undefined) {
+    if (!Array.isArray(raw.half) || raw.half.length !== h) fail('Число строк в half не совпадает с height.');
+    const hf = new Uint8Array(w * h);
+    let any = false;
+    raw.half.forEach((row, y) => {
+      if (typeof row !== 'string' || row.length !== w) fail(`Строка ${y + 1} в half неверной длины.`);
+      for (let x = 0; x < w; x++) {
+        if (row[x] === '/' && cells[y * w + x] !== EMPTY) {
+          hf[y * w + x] = 1;
+          any = true;
+        }
+      }
+    });
+    if (any) half = hf;
+  }
+
   let sheets: Sheet[] | undefined;
   if (Array.isArray(raw.sheets)) {
     sheets = [];
@@ -150,6 +171,7 @@ export function parsePattern(raw: unknown): Pattern {
     palette,
     cells,
     backstitch,
+    ...(half ? { half } : {}),
     ...(sheets ? { sheets } : {}),
   };
 }
@@ -158,4 +180,12 @@ export function stitchCount(p: Pattern): number {
   let n = 0;
   for (const v of p.cells) if (v !== EMPTY) n++;
   return n;
+}
+
+/** Сколько полукрестиков у каждого цвета (id → число). */
+export function halfCounts(p: Pattern): Map<number, number> {
+  const m = new Map<number, number>();
+  if (!p.half) return m;
+  for (let i = 0; i < p.cells.length; i++) if (p.half[i] && p.cells[i] !== EMPTY) m.set(p.cells[i], (m.get(p.cells[i]) ?? 0) + 1);
+  return m;
 }

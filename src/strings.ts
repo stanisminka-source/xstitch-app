@@ -60,6 +60,7 @@ export const ru = {
   sortCode: 'По номеру',
   sortCount: 'По количеству',
   crosses: 'кр.',
+  halves: (n: string) => `из них ${n} полукр.`,
   of: 'из',
   done: 'вышито',
   nothingFound: 'Такого номера в схеме нет',

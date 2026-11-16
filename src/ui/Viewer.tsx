@@ -8,7 +8,7 @@ import { blockCells, lineCells, patchCells, percent, Progress, type Op } from '.
 import { BackupError, backupFileName, emptyMeta, logDelta, makeBackup, mergeDays, normalizeMeta, readBackup, REMIND_EVERY, type Meta } from '../progress/backup';
 import { ProgressSheet } from './ProgressSheet';
 import { AreaSheet } from './AreaSheet';
-import { areaCounts, areaMask, compareCodes, defaultChoice, sheetsOf, snapRect, type FabricChoice, type Rect } from '../pattern/threads';
+import { areaCounts, areaMask, compareCodes, defaultChoice, halvesByColor, sheetsOf, snapRect, type FabricChoice, type Rect } from '../pattern/threads';
 
 /** Что выбрано для расчёта ниток: целые листы и обведённые участки, в порядке добавления. */
 type AreaItem = { kind: 'sheet'; page: number } | { kind: 'rect'; rect: Rect };
@@ -434,6 +434,11 @@ export function Viewer({ stored, settings, dark, env, onSettings, onImport, onOp
   };
 
   const sel = selected !== null ? palette[selected] : null;
+  const halves = useMemo(() => {
+    const index = new Map(palette.map((c, i) => [c.id, i]));
+    const idx = Int16Array.from(pattern.cells, (v) => (v < 0 ? -1 : index.get(v)!));
+    return halvesByColor(idx, pattern.half, palette.length);
+  }, [pattern]);
   const order = useMemo(() => {
     const idx = palette.map((_, i) => i);
     if (settings.threadSort === 'count') return idx.sort((a, b) => palette[b].count - palette[a].count);
@@ -532,7 +537,7 @@ export function Viewer({ stored, settings, dark, env, onSettings, onImport, onOp
   const areaRows = useMemo(() => {
     const r = rRef.current;
     if (!r || !prog || (!area && sheet !== 'area')) return [];
-    return areaCounts(r.idx, prog.done, areaMask(pattern.width, pattern.height, areaRects()), palette.length);
+    return areaCounts(r.idx, prog.done, areaMask(pattern.width, pattern.height, areaRects()), palette.length, r.half);
   }, [areaItems, area, sheet, prog?.version]);
   const areaCrosses = areaRows.reduce((n, r) => n + r.total, 0);
   const openArea = () => {
@@ -592,6 +597,7 @@ export function Viewer({ stored, settings, dark, env, onSettings, onImport, onOp
           <ThreadsSheet
             palette={palette}
             symbols={symbols}
+            halves={halves}
             order={order}
             selected={selected}
             left={left}

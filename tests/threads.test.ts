@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { areaCounts, areaMask, compareCodes, defaultChoice, recommendedStrands, sheetsOf, skeinsToBuy, snapRect } from '../src/pattern/threads';
+import { areaCounts, areaMask, compareCodes, crossUnits, defaultChoice, halvesByColor, recommendedStrands, sheetsOf, skeinsToBuy, snapRect } from '../src/pattern/threads';
 import type { Pattern } from '../src/pattern/format';
 
 describe('Расход ниток', () => {
@@ -50,9 +50,27 @@ describe('Участок схемы', () => {
     const done = Uint8Array.from([1, 0, 0, 0, 0, 0, 0, 0]);
     const mask = areaMask(4, 2, [{ x: 0, y: 0, w: 2, h: 2 }, { x: 1, y: 0, w: 2, h: 1 }]);
     expect(areaCounts(idx, done, mask, 2)).toEqual([
-      { k: 0, total: 3, left: 2 },
-      { k: 1, total: 2, left: 2 },
+      { k: 0, total: 3, left: 2, halfTotal: 0, halfLeft: 0 },
+      { k: 1, total: 2, left: 2, halfTotal: 0, halfLeft: 0 },
     ]);
+  });
+
+  it('полукрестики: считаются отдельно, нитки на них — половина', () => {
+    // 4 × 2: цвета 0 0 1 . / 1 0 . 1; полукресты — в клетках 1, 2 и 5
+    const idx = Int16Array.from([0, 0, 1, -1, 1, 0, -1, 1]);
+    const half = Uint8Array.from([0, 1, 1, 0, 0, 1, 0, 0]);
+    const done = Uint8Array.from([0, 1, 0, 0, 0, 0, 0, 0]);
+    const mask = areaMask(4, 2, [{ x: 0, y: 0, w: 4, h: 2 }]);
+    expect(areaCounts(idx, done, mask, 2, half)).toEqual([
+      { k: 1, total: 3, left: 3, halfTotal: 1, halfLeft: 1 },
+      { k: 0, total: 3, left: 2, halfTotal: 2, halfLeft: 1 },
+    ]);
+    expect(Array.from(halvesByColor(idx, half, 2))).toEqual([2, 1]);
+    expect(Array.from(halvesByColor(idx, undefined, 2))).toEqual([0, 0]);
+    // 4 стежка цвета 0, из них 2 полукреста → нитки как на 3 полных крестика
+    expect(crossUnits(4, 2)).toBe(3);
+    // 6000 полукрестиков — нитки как на 3000 крестиков: 1 моток, а не 2
+    expect(skeinsToBuy(crossUnits(6000, 6000), 18, 2)).toBe(1);
   });
 });
 

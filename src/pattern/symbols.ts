@@ -10,8 +10,12 @@ const DIGITS = ['1', '2', '3', '4', '5', '6', '7', '8', '9'];
 const UPPER = 'ABCDEFGHJKLMNPQRSTUVWXYZ'.split(''); // без I и O
 const LOWER = 'abdefghkmnpqrstuvwxyz'.split(''); // без похожих c, i, j, l, o
 const GREEK = 'αβγδεθλμπσφψΓΔΘΛΞΠΣΦΨΩ'.split('');
+// Дальше — до 130 цветов, как в конструкторе схем (тот же порядок):
+// кириллица, не похожая на латиницу и греческие буквы, и ещё фигуры.
+const CYRILLIC = 'БДЖЗИЙЦЧШЩЪЫЬЭЮЯ'.split('');
+const MORE_SHAPES = ['◐', '◑', '◒', '◓', '▣', '◈', '◉', '◎', '⊕', '⊗', '⊞', '⊠', '☼', '♪', '♫', '⌂'];
 
-export const SYMBOL_SET: readonly string[] = [...SHAPES, ...UPPER, ...DIGITS, ...LOWER, ...GREEK];
+export const SYMBOL_SET: readonly string[] = [...SHAPES, ...UPPER, ...DIGITS, ...LOWER, ...GREEK, ...CYRILLIC, ...MORE_SHAPES];
 
 /** Назначает символы цветам: самым частым цветам — самые простые знаки.
  *  Возвращает символ для каждого индекса палитры. */

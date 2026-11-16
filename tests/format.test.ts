@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parsePattern, PatternError, stitchCount } from '../src/pattern/format';
+import { halfCounts, parsePattern, PatternError, stitchCount } from '../src/pattern/format';
 
 // Синтетическая схема 3 × 2 — не настоящая схема, придумана для теста.
 const tiny = () => ({
@@ -53,5 +53,26 @@ describe('parsePattern', () => {
 
   it('отклоняет чужой формат', () => {
     expect(() => parsePattern({ format: 'other' })).toThrow(/не файл схемы/);
+  });
+
+  it('читает полукрестики (поле half): «/» — полукрест, в пустой клетке не считается', () => {
+    const p = parsePattern({ ...tiny(), half: ['/./', '/  '] });
+    // клетка (2, 0) пустая — полукреста там нет
+    expect(Array.from(p.half!)).toEqual([1, 0, 0, 1, 0, 0]);
+    // полукрестики остаются клетками своего цвета: число стежков не меняется
+    expect(p.palette[0].count).toBe(3);
+    expect(stitchCount(p)).toBe(4);
+    expect([...halfCounts(p)]).toEqual([[0, 2]]);
+  });
+
+  it('без поля half или без единой «/» — всё полные крестики', () => {
+    expect(parsePattern(tiny()).half).toBeUndefined();
+    expect(parsePattern({ ...tiny(), half: ['...', '...'] }).half).toBeUndefined();
+    expect(halfCounts(parsePattern(tiny())).size).toBe(0);
+  });
+
+  it('отклоняет half неверного размера', () => {
+    expect(() => parsePattern({ ...tiny(), half: ['/..'] })).toThrow(PatternError);
+    expect(() => parsePattern({ ...tiny(), half: ['/.', '...'] })).toThrow(PatternError);
   });
 });

@@ -5,7 +5,7 @@ import type { PaletteColor } from '../pattern/format';
 import { db } from '../store/db';
 import { PROGRESS_MODES, type GridMode, type ProgressMode, type Settings, type ThreadSort, type ViewMode } from '../store/settings';
 import { plural, t } from '../strings';
-import { FABRICS, fabricById, finishedSize, recommendedStrands, skeinsToBuy, type FabricChoice } from '../pattern/threads';
+import { crossUnits, FABRICS, fabricById, finishedSize, recommendedStrands, skeinsToBuy, type FabricChoice } from '../pattern/threads';
 import { Icon } from './Icon';
 
 export type SheetName = 'view' | 'grid' | 'threads' | 'more' | 'progress' | 'area';
@@ -84,6 +84,8 @@ export function GridSheet({ value, onChange }: { value: GridMode; onChange(m: Gr
 interface ThreadsProps {
   palette: PaletteColor[];
   symbols: string[];
+  /** Полукрестиков каждого цвета. */
+  halves: Int32Array;
   order: number[];
   selected: number | null;
   left(k: number): number;
@@ -104,7 +106,8 @@ export function ThreadsSheet(p: ThreadsProps) {
   const rows = p.order.filter((k) => !query || p.palette[k].code.toLowerCase().includes(query));
   const fab = fabricById(p.fabric.fabric);
   const cm = finishedSize(p.size.width, p.size.height, fab.count);
-  const total = p.order.reduce((n, k) => n + skeinsToBuy(p.palette[k].count, fab.count, p.fabric.strands), 0);
+  const toBuy = (k: number) => skeinsToBuy(crossUnits(p.palette[k].count, p.halves[k]), fab.count, p.fabric.strands);
+  const total = p.order.reduce((n, k) => n + toBuy(k), 0);
   return (
     <div class="sheet tall">
       <div class="sheet-head">
@@ -166,10 +169,10 @@ export function ThreadsSheet(p: ThreadsProps) {
                 ) : p.left(k) < c.count ? (
                   `${t.left} ${plural(p.left(k))} ${t.of} ${plural(c.count)}`
                 ) : (
-                  `${plural(c.count)} ${t.crosses}`
+                  `${plural(c.count)} ${t.crosses}${p.halves[k] ? `, ${t.halves(plural(p.halves[k]))}` : ''}`
                 )}
               </span>
-              <span class="skeins">{t.skeinsShort(skeinsToBuy(c.count, fab.count, p.fabric.strands))}</span>
+              <span class="skeins">{t.skeinsShort(toBuy(k))}</span>
             </button>
           );
         })}
