@@ -42,7 +42,8 @@ async function open(bytes: Uint8Array) {
   return { doc: doc as never, ops: pdfjs.OPS as never };
 }
 
-describe('PDF с вложенным файлом схемы', () => {
+// Первый тест загружает pdf.js с нуля — на медленном сервере GitHub это дольше 5 секунд
+describe('PDF с вложенным файлом схемы', { timeout: 30_000 }, () => {
   it('открывается как сама схема — с контуром, листами, канвой и палитрой Anchor', async () => {
     const { doc, ops } = await open(await makePdf([{ name: 'Тест с контуром.pattern.json', text: JSON.stringify(tiny()) }]));
     const p = parsePattern(await patternFromPdf(doc, ops));
