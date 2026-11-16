@@ -167,7 +167,7 @@ export function ThreadsSheet(p: ThreadsProps) {
           ))}
         </div>
         <p class="muted small fabric-info">
-          {t.finished(cm.w.toFixed(1).replace('.', ','), cm.h.toFixed(1).replace('.', ','))} · {t.skeinsTotal(total)}
+          {t.finished(cm.w.toFixed(1).replace('.', ','), cm.h.toFixed(1).replace('.', ','))} · {t.colorsTotal(p.order.length)} · {t.skeinsTotal(total)}
           {p.fabric.strands !== recommendedStrands(fab.count) && ` · ${t.strandsAdvice(recommendedStrands(fab.count))}`}
         </p>
         <button class="seg area-btn" onClick={p.onArea}>
