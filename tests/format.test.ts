@@ -39,6 +39,23 @@ describe('parsePattern', () => {
     expect(() => parsePattern(raw)).toThrow(PatternError);
   });
 
+  it('принимает «контур от руки»: концы линий в любых точках схемы, не только в узлах', () => {
+    const free = [
+      { color: 0, x1: 1.35, y1: 0.2, x2: 2.95, y2: 1.85 },
+      { color: 1, x1: 0, y1: 1.05, x2: 3, y2: 2 },
+    ];
+    const p = parsePattern({ ...tiny(), backstitch: free });
+    // координаты сохраняются как есть, без округления до сетки
+    expect(p.backstitch).toEqual(free);
+  });
+
+  it('отклоняет дробную линию за краем схемы и не-числа', () => {
+    expect(() => parsePattern({ ...tiny(), backstitch: [{ color: 0, x1: 0, y1: 0, x2: 3.05, y2: 1 }] })).toThrow(/выходит за схему/);
+    expect(() => parsePattern({ ...tiny(), backstitch: [{ color: 0, x1: -0.1, y1: 0, x2: 1, y2: 1 }] })).toThrow(PatternError);
+    expect(() => parsePattern({ ...tiny(), backstitch: [{ color: 0, x1: 0, y1: 0, x2: Infinity, y2: 1 }] })).toThrow(PatternError);
+    expect(() => parsePattern({ ...tiny(), backstitch: [{ color: 0, x1: '1', y1: 0, x2: 1, y2: 1 }] })).toThrow(PatternError);
+  });
+
   it('отклоняет неизвестный цвет в клетке', () => {
     const raw = tiny();
     raw.cells[1][2] = 7;

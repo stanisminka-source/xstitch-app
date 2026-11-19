@@ -120,10 +120,10 @@ export function parsePattern(raw: unknown): Pattern {
     raw.backstitch.forEach((l, i) => {
       if (!isRecord(l)) fail(`Линия №${i + 1} записана неверно.`);
       const nums = [l.x1, l.y1, l.x2, l.y2];
-      const onGrid = (v: unknown, max: number) =>
-        typeof v === 'number' && Number.isInteger(v * 2) && v >= 0 && v <= max;
-      if (!onGrid(nums[0], w) || !onGrid(nums[2], w) || !onGrid(nums[1], h) || !onGrid(nums[3], h)) {
-        fail(`Линия №${i + 1} выходит за схему или не попадает в узлы сетки.`);
+      // Концы линии — любые точки схемы: углы клеток, середины или «контур от руки» поверх крестиков
+      const inside = (v: unknown, max: number) => typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= max;
+      if (!inside(nums[0], w) || !inside(nums[2], w) || !inside(nums[1], h) || !inside(nums[3], h)) {
+        fail(`Линия №${i + 1} выходит за схему.`);
       }
       if (!ids.has(l.color as number)) fail(`Линия №${i + 1}: неизвестный цвет.`);
       backstitch.push({ color: l.color as number, x1: l.x1 as number, y1: l.y1 as number, x2: l.x2 as number, y2: l.y2 as number });
