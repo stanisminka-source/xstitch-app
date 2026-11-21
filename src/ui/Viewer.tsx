@@ -10,7 +10,9 @@ import { ProgressSheet } from './ProgressSheet';
 import { AreaSheet } from './AreaSheet';
 import { StashSheet } from './StashSheet';
 import { normalizeStash, type Stash } from '../store/stash';
-import type { ShareResult } from '../lib/share';
+import { applyShop, normalizeShop, startShop, type ShopSession } from '../store/shop';
+import type { ListRow } from '../store/stash';
+import { ShopSheet } from './ShopSheet';
 import { areaCounts, areaMask, compareCodes, defaultChoice, halvesByColor, sheetsOf, snapRect, type FabricChoice, type Rect } from '../pattern/threads';
 
 /** Что выбрано для расчёта ниток: целые листы и обведённые участки, в порядке добавления. */
@@ -77,8 +79,28 @@ export function Viewer({ stored, settings, dark, env, onSettings, onImport, onOp
     setStash(s);
     db.set('stash', s);
   };
-  const onShared = (r: ShareResult) => {
-    if (r !== 'cancelled') setToast(t.listSaved);
+  // ——— покупка в магазине (общая, переживает закрытие приложения) ———
+  const [shop, setShop] = useState<ShopSession | null>(null);
+  useEffect(() => {
+    db.get('shop').then((v) => setShop(normalizeShop(v)));
+  }, []);
+  const updateShop = (s: ShopSession | null) => {
+    setShop(s);
+    if (s) db.set('shop', s);
+    else db.del('shop');
+  };
+  const beginShop = (rows: ListRow[]) => {
+    if (shop?.items.some((i) => i.checked) && !confirm(t.shopReplaceConfirm)) return setSheet('shop');
+    updateShop(startShop(pattern.title, rows));
+    setSheet('shop');
+  };
+  const saveShop = () => {
+    if (!shop) return;
+    const r = applyShop(stash, shop);
+    updateStash(r.stash);
+    updateShop(null);
+    setSheet('threads');
+    setToast(t.shopSaved(r.colors, r.skeins));
   };
   const sheetInfo = useMemo(() => sheetsOf(pattern), [pattern]);
   const [area, setArea] = useState(false);
@@ -627,7 +649,10 @@ export function Viewer({ stored, settings, dark, env, onSettings, onImport, onOp
             title={pattern.title}
             stash={stash}
             onStash={() => setSheet('stash')}
-            onShared={onShared}
+            onToast={setToast}
+            onShop={beginShop}
+            shopOpen={!!shop}
+            onResumeShop={() => setSheet('shop')}
             sort={settings.threadSort}
             onSort={(threadSort) => onSettings({ threadSort })}
             onPick={(k) => {
@@ -635,6 +660,20 @@ export function Viewer({ stored, settings, dark, env, onSettings, onImport, onOp
               setSheet(null);
             }}
             onClose={() => setSheet(null)}
+          />
+        )}
+        {sheet === 'shop' && shop && (
+          <ShopSheet
+            session={shop}
+            onChange={updateShop}
+            onSave={saveShop}
+            onLater={() => setSheet(null)}
+            onCancel={() => {
+              if (confirm(t.shopCancelConfirm)) {
+                updateShop(null);
+                setSheet('threads');
+              }
+            }}
           />
         )}
         {sheet === 'stash' && <StashSheet stash={stash} palette={palette} onChange={updateStash} onClose={() => setSheet('threads')} />}
@@ -646,7 +685,8 @@ export function Viewer({ stored, settings, dark, env, onSettings, onImport, onOp
             fabric={fabric}
             title={pattern.title}
             stash={stash}
-            onShared={onShared}
+            onToast={setToast}
+            onShop={beginShop}
             sort={settings.threadSort}
             onSort={(threadSort) => onSettings({ threadSort })}
             onPick={(k) => {

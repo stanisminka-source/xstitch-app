@@ -4,6 +4,7 @@ import { css } from '../lib/color';
 import type { PaletteColor } from '../pattern/format';
 import { compareCodes } from '../pattern/threads';
 import { addCodes, parseCodes, stashKey, type Stash, type StashItem } from '../store/stash';
+import { dmcThread } from '../pattern/catalog';
 import { t } from '../strings';
 import { Icon } from './Icon';
 
@@ -25,10 +26,12 @@ export function StashSheet({ stash, palette, onChange, onClose }: Props) {
   const add = () => {
     const codes = parseCodes(text);
     if (!codes.length) return;
-    const r = addCodes(stash, codes);
+    // номера пишем так, как в таблице DMC (BLANC, ECRU)
+    const r = addCodes(stash, codes.map((c) => dmcThread(c)?.code ?? c));
     onChange(r.stash);
     setText('');
-    setNote(t.stashAdded(r.added.length, r.already));
+    const unknown = codes.filter((c) => !dmcThread(c));
+    setNote(`${t.stashAdded(r.added.length, r.already)}${unknown.length ? `. ${t.stashUnknown(unknown)}` : ''}`);
   };
   const update = (key: string, patch: Partial<StashItem>) => onChange({ ...stash, [key]: { ...stash[key], ...patch } });
   const remove = (key: string) => {
@@ -71,7 +74,7 @@ export function StashSheet({ stash, palette, onChange, onClose }: Props) {
       </div>
       <div class="thread-list">
         {items.map(([key, it]) => {
-          const c = known.get(key);
+          const c = known.get(key) ?? dmcThread(it.code);
           return (
             <div key={key} class="thread stash-row">
               <span class="sw" style={{ background: c ? css(c.rgb) : 'var(--surface-2)' }} />

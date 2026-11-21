@@ -6,8 +6,8 @@ import { compareCodes, crossUnits, fabricById, skeins, skeinsToBuy, type AreaRow
 import type { ThreadSort } from '../store/settings';
 import { plural, t } from '../strings';
 import { Icon } from './Icon';
-import { haveAmount, listFileName, listText, needToBuy, stashKey, type Stash } from '../store/stash';
-import { shareFile, type ShareResult } from '../lib/share';
+import { haveAmount, listFileName, listPdfData, needToBuy, stashKey, type ListRow, type Stash } from '../store/stash';
+import { exportListPdf } from '../pdf/exportList';
 
 interface Props {
   rows: AreaRow[];
@@ -18,14 +18,15 @@ interface Props {
   onSort(s: ThreadSort): void;
   title: string;
   stash: Stash;
-  onShared(r: ShareResult): void;
+  onToast(msg: string): void;
+  onShop(rows: ListRow[]): void;
   onPick(k: number): void;
   onClose(): void;
 }
 
 const fmt = (v: number) => (v < 0.1 ? '0,1' : v.toFixed(1).replace('.', ','));
 
-export function AreaSheet({ rows, palette, symbols, fabric, sort, onSort, title, stash, onShared, onPick, onClose }: Props) {
+export function AreaSheet({ rows, palette, symbols, fabric, sort, onSort, title, stash, onToast, onShop, onPick, onClose }: Props) {
   const [onlyLeft, setOnlyLeft] = useState(true);
   const fab = fabricById(fabric.fabric);
   // для покупки удобнее по возрастанию номера; «по количеству» — как в общем списке ниток
@@ -40,15 +41,21 @@ export function AreaSheet({ rows, palette, symbols, fabric, sort, onSort, title,
   // с запасами — сколько докупить; без них — по целому мотку каждого цвета, как раньше
   const buyOf = (r: (typeof list)[0]) => (useStash ? needToBuy(need(r), haveAmount(haveOf(r.k))) : skeinsToBuy(crossUnits(r.n, r.h), fab.count, fabric.strands));
   const buy = list.reduce((s, r) => s + buyOf(r), 0);
+  const buyRows = (): ListRow[] =>
+    list.filter((r) => buyOf(r) > 0).map((r) => ({ code: palette[r.k].code, name: palette[r.k].name, rgb: palette[r.k].rgb, need: need(r), have: haveOf(r.k), buy: buyOf(r) }));
   const exportList = async () => {
-    const text = listText({
+    const data = listPdfData({
       title: `${t.listPattern}: ${title}`,
       heading: t.listAreaHeading,
       notes: [`${t.fabric}: ${fab.label}, ${t.strands(fabric.strands)}`, onlyLeft ? t.listBuyNote : t.areaAll],
-      rows: list.filter((r) => buyOf(r) > 0).map((r) => ({ code: palette[r.k].code, name: palette[r.k].name, need: need(r), have: haveOf(r.k), buy: buyOf(r) })),
+      rows: buyRows(),
       mode: 'buy',
     });
-    onShared(await shareFile(listFileName(title, 'участок-покупки'), text));
+    try {
+      await exportListPdf(data, listFileName(title, 'участок-покупки'));
+    } catch (e) {
+      onToast(`${t.fileError}: ${(e as Error).message}`);
+    }
   };
   return (
     <div class="sheet tall">
@@ -73,6 +80,11 @@ export function AreaSheet({ rows, palette, symbols, fabric, sort, onSort, title,
         {list.length > 0 && (
           <button class="seg" onClick={exportList} disabled={!buy}>
             <Icon name="share" /> {t.listExport}
+          </button>
+        )}
+        {buy > 0 && (
+          <button class="primary small" onClick={() => onShop(buyRows())}>
+            <Icon name="bag" /> {t.shopStart}
           </button>
         )}
       </div>

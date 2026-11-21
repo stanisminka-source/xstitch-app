@@ -7,10 +7,10 @@ import { LINES_MODES, PROGRESS_MODES, type GridMode, type LinesMode, type Progre
 import { plural, t } from '../strings';
 import { crossUnits, FABRICS, fabricById, finishedSize, recommendedStrands, skeins, skeinsToBuy, type FabricChoice } from '../pattern/threads';
 import { Icon } from './Icon';
-import { haveAmount, haveText, listFileName, listText, needToBuy, stashKey, type ListRow, type Stash } from '../store/stash';
-import { shareFile, type ShareResult } from '../lib/share';
+import { haveAmount, haveText, listFileName, listPdfData, needToBuy, stashKey, type ListRow, type Stash } from '../store/stash';
+import { exportListPdf } from '../pdf/exportList';
 
-export type SheetName = 'view' | 'grid' | 'threads' | 'more' | 'progress' | 'area' | 'stash';
+export type SheetName = 'view' | 'grid' | 'threads' | 'more' | 'progress' | 'area' | 'stash' | 'shop';
 
 const MODES: ViewMode[] = ['colorSymbol', 'color', 'symbol', 'coloredSymbol', 'selectedOnly', 'stitched'];
 
@@ -120,7 +120,12 @@ interface ThreadsProps {
   title: string;
   stash: Stash;
   onStash(): void;
-  onShared(r: ShareResult): void;
+  onToast(msg: string): void;
+  /** Начать покупку по списку «К покупке». */
+  onShop(rows: ListRow[]): void;
+  /** Есть незаконченная покупка — её можно продолжить. */
+  shopOpen: boolean;
+  onResumeShop(): void;
   sort: ThreadSort;
   onSort(s: ThreadSort): void;
   onPick(k: number | null): void;
@@ -149,22 +154,28 @@ export function ThreadsSheet(p: ThreadsProps) {
   const buyTotal = p.order.reduce((n, k) => n + buyLeft(k), 0);
   const buyColors = p.order.filter((k) => buyLeft(k) > 0).length;
 
-  const exportList = async () => {
-    const listRows: ListRow[] = shown.map((k) => ({
+  const listRows = (): ListRow[] =>
+    shown.map((k) => ({
       code: p.palette[k].code,
       name: p.palette[k].name,
+      rgb: p.palette[k].rgb,
       need: mode === 'buy' ? needLeft(k) : skeins(crossUnits(p.palette[k].count, p.halves[k]), fab.count, p.fabric.strands),
       have: have(k),
       buy: mode === 'buy' ? buyLeft(k) : toBuy(k),
     }));
-    const text = listText({
+  const exportList = async () => {
+    const data = listPdfData({
       title: `${t.listPattern}: ${p.title}`,
       heading: mode === 'buy' ? t.listBuyHeading : t.listAllHeading,
       notes: [`${t.fabric}: ${fab.label}, ${t.strands(p.fabric.strands)}`, ...(mode === 'buy' ? [t.listBuyNote] : [])],
-      rows: listRows,
+      rows: listRows(),
       mode,
     });
-    p.onShared(await shareFile(listFileName(p.title, mode === 'buy' ? 'покупки' : 'нитки'), text));
+    try {
+      await exportListPdf(data, listFileName(p.title, mode === 'buy' ? 'покупки' : 'нитки'));
+    } catch (e) {
+      p.onToast(`${t.fileError}: ${(e as Error).message}`);
+    }
   };
   return (
     <div class="sheet tall">
@@ -222,6 +233,16 @@ export function ThreadsSheet(p: ThreadsProps) {
         <button class="seg" onClick={exportList} disabled={!shown.length}>
           <Icon name="share" /> {t.listExport}
         </button>
+        {mode === 'buy' && buyColors > 0 && (
+          <button class="primary small" onClick={() => p.onShop(listRows())}>
+            <Icon name="bag" /> {t.shopStart}
+          </button>
+        )}
+        {p.shopOpen && (
+          <button class="seg" onClick={p.onResumeShop}>
+            <Icon name="bag" /> {t.shopResume}
+          </button>
+        )}
         {mode === 'buy' && (
           <p class="small fabric-info">
             {buyColors ? t.buySummary(buyTotal, buyColors) : t.buyNothing}

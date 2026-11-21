@@ -229,3 +229,20 @@ button.pill { cursor: pointer; }
 .stash-row .low { display: inline-flex; align-items: center; gap: 4px; font-size: 13px; color: var(--muted); }
 .stash-row .low input { width: 18px; height: 18px; accent-color: var(--accent); }
 .thread .have { color: var(--accent-ink); }
+
+/* в магазине и окошко «Файл готов» */
+.shop-row { gap: 6px; }
+.shop-row.on { background: var(--accent-soft); }
+.shop-check { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; cursor: pointer; }
+.shop-check input { width: 22px; height: 22px; flex: 0 0 auto; accent-color: var(--accent); }
+.shop-row .stepper { display: inline-flex; align-items: center; gap: 2px; }
+.shop-row .stepper .icon-btn { width: 32px; height: 32px; font-size: 18px; color: var(--text); background: var(--surface-2); }
+.shop-row .stepper b { min-width: 22px; text-align: center; }
+.shop-foot { display: flex; gap: 8px; flex-wrap: wrap; padding: 10px 12px calc(10px + env(safe-area-inset-bottom)); border-top: 1px solid var(--line); }
+.shop-foot .primary { flex: 1; }
+.modal-back { position: fixed; inset: 0; z-index: 50; background: rgba(0,0,0,.35); display: flex; align-items: center; justify-content: center; padding: 16px; }
+.modal { background: var(--bg); color: var(--text); border-radius: 16px; padding: 18px; max-width: 380px; width: 100%; box-shadow: 0 12px 40px rgba(0,0,0,.3); }
+.modal b { font-size: 17px; }
+.modal p { margin: 8px 0; word-break: break-word; }
+.modal-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+.primary-link { display: inline-flex; align-items: center; justify-content: center; background: var(--accent); color: #fff; border-radius: 999px; padding: 9px 18px; font-weight: 500; text-decoration: none; }

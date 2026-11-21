@@ -31,7 +31,7 @@ export default defineConfig({
         ],
       },
       workbox: {
-        globPatterns: ['**/*.{js,mjs,css,html,svg,png,woff2,webmanifest}'],
+        globPatterns: ['**/*.{js,mjs,css,html,svg,png,woff2,ttf,webmanifest}'],
         // pdf.js большой — разрешаем положить его в офлайн-кэш целиком
         maximumFileSizeToCacheInBytes: 6 * 1024 * 1024,
         navigateFallback: 'index.html',

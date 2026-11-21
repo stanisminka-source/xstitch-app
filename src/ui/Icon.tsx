@@ -11,6 +11,7 @@ const PATHS: Record<string, string> = {
   trash: 'M4 7h16 M10 11v6 M14 11v6 M6 7l1 13h10l1-13 M9 7V4h6v3',
   check: 'M5 12l5 5 9-10',
   area: 'M4 4h6v6H4Z M14 4h6v6h-6Z M4 14h6v6H4Z M14 14h6v6h-6Z',
+  bag: 'M5 8h14l-1 12H6Z M9 8V6a3 3 0 0 1 6 0v2',
   box: 'M4 8l8-4 8 4v8l-8 4-8-4Z M4 8l8 4 8-4 M12 12v8',
   share: 'M12 15V4 M8 8l4-4 4 4 M6 12H5v8h14v-8h-1',
   chart: 'M4 20h16 M7 16v-4 M12 16V7 M17 16v-7',

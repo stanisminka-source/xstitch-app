@@ -82,6 +82,7 @@ export function needToBuy(need: number, have: number): number {
 export interface ListRow {
   code: string;
   name: string;
+  rgb: [number, number, number] | null;
   /** Нужно мотков (дробно). */
   need: number;
   have?: StashItem;
@@ -96,24 +97,29 @@ export function haveText(it: StashItem | undefined): string {
   return `есть ${it.skeins} мот.${it.low ? ', один начат' : ''}`;
 }
 
-/** Текст списка для «Поделиться» и файла. */
-export function listText(o: { title: string; heading: string; notes: string[]; rows: ListRow[]; mode: 'buy' | 'all' }): string {
-  const lines = [o.heading, o.title, ...o.notes, ''];
-  for (const r of o.rows) {
-    const name = r.name ? ` ${r.name}` : '';
-    if (o.mode === 'buy') lines.push(`☐ DMC ${r.code}${name} — ${r.buy} мот.`);
-    else {
-      const have = haveText(r.have);
-      lines.push(`DMC ${r.code}${name} — ${r.buy} мот. (нужно ≈${fmt1(r.need)})${have ? ` · ${have}` : ''}`);
-    }
-  }
+/** Данные для PDF-списка: «к покупке» — сколько купить; «все» — нужно, есть, купить. */
+export function listPdfData(o: { title: string; heading: string; notes: string[]; rows: ListRow[]; mode: 'buy' | 'all' }) {
   const total = o.rows.reduce((n, r) => n + r.buy, 0);
-  lines.push('', `Итого: ${total} мот., цветов: ${o.rows.length}`);
-  return lines.join('\n');
+  return {
+    heading: o.heading,
+    lines: [o.title, ...o.notes],
+    columns: o.mode === 'buy' ? ['Купить'] : ['Нужно', 'Есть', 'Купить'],
+    rows: o.rows.map((r) => ({
+      code: r.code,
+      name: r.name,
+      rgb: r.rgb,
+      cells:
+        o.mode === 'buy'
+          ? [`${r.buy} мот.`]
+          : [`≈${fmt1(r.need)}`, haveText(r.have).replace(/^есть /, '') || '—', r.buy ? `${r.buy} мот.` : '—'],
+    })),
+    total: `Итого купить: ${total} мот., цветов: ${o.rows.filter((r) => r.buy > 0).length}`,
+    footer: `Smile & Stitch · ${new Date().toLocaleDateString('ru-RU')}`,
+  };
 }
 
 /** Имя файла без странных знаков. */
 export function listFileName(title: string, kind: string): string {
   const slug = title.replace(/\(.*?\)/g, '').replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-|-$/g, '').slice(0, 40) || 'схема';
-  return `${slug}-${kind}.txt`;
+  return `${slug}-${kind}.pdf`;
 }
