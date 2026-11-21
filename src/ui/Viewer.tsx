@@ -13,6 +13,8 @@ import { normalizeStash, type Stash } from '../store/stash';
 import { applyShop, normalizeShop, startShop, type ShopSession } from '../store/shop';
 import type { ListRow } from '../store/stash';
 import { ShopSheet } from './ShopSheet';
+import { OrganizerSheet } from './OrganizerSheet';
+import { normalizeOrganizer, normalizeSlots, type Organizer, type OrgSource } from '../pattern/organizer';
 import { areaCounts, areaMask, compareCodes, defaultChoice, halvesByColor, sheetsOf, snapRect, type FabricChoice, type Rect } from '../pattern/threads';
 
 /** Что выбрано для расчёта ниток: целые листы и обведённые участки, в порядке добавления. */
@@ -79,6 +81,29 @@ export function Viewer({ stored, settings, dark, env, onSettings, onImport, onOp
     setStash(s);
     db.set('stash', s);
   };
+  // ——— органайзер: число мест общее, раскладка — своя у каждой схемы ———
+  const [orgSlots, setOrgSlots] = useState(20);
+  const [org, setOrg] = useState<Organizer | null>(null);
+  const [orgSource, setOrgSource] = useState<OrgSource>('all');
+  useEffect(() => {
+    db.get('orgSlots').then((v) => setOrgSlots(normalizeSlots(v)));
+    db.get(`org:${id}`).then((v) => setOrg(normalizeOrganizer(v)));
+  }, []);
+  const updateOrgSlots = (n: number) => {
+    setOrgSlots(n);
+    db.set('orgSlots', n);
+  };
+  const updateOrg = (o: Organizer | null) => {
+    setOrg(o);
+    if (o) db.set(`org:${id}`, o);
+    else db.del(`org:${id}`);
+  };
+  const slotOf = useMemo(() => new Map((org?.codes ?? []).map((c, i) => [c.toUpperCase(), i + 1])), [org]);
+  const openOrganizer = (source: OrgSource) => {
+    setOrgSource(source);
+    setSheet('organizer');
+  };
+
   // ——— покупка в магазине (общая, переживает закрытие приложения) ———
   const [shop, setShop] = useState<ShopSession | null>(null);
   useEffect(() => {
@@ -383,7 +408,7 @@ export function Viewer({ stored, settings, dark, env, onSettings, onImport, onOp
       },
       onTap: (px, py) => {
         const hit = r.hit(px, py);
-        setSheet((s) => (s === 'threads' || s === 'more' || s === 'progress' || s === 'stash' ? null : s));
+        setSheet((s) => (s === 'threads' || s === 'more' || s === 'progress' || s === 'stash' || s === 'organizer' ? null : s));
         if (!hit || hit.color < 0) return;
         choose(hit.color === selectedRef.current ? null : hit.color);
       },
@@ -646,6 +671,7 @@ export function Viewer({ stored, settings, dark, env, onSettings, onImport, onOp
             size={{ width: pattern.width, height: pattern.height }}
             onFabric={updateFabric}
             onArea={openArea}
+            onOrganizer={() => openOrganizer(org?.source ?? 'all')}
             title={pattern.title}
             stash={stash}
             onStash={() => setSheet('stash')}
@@ -659,6 +685,34 @@ export function Viewer({ stored, settings, dark, env, onSettings, onImport, onOp
               choose(k);
               setSheet(null);
             }}
+            onClose={() => setSheet(null)}
+          />
+        )}
+        {sheet === 'organizer' && (
+          <OrganizerSheet
+            palette={palette}
+            symbols={symbols}
+            title={pattern.title}
+            stash={stash}
+            slots={orgSlots}
+            onSlots={updateOrgSlots}
+            saved={org}
+            onSave={updateOrg}
+            countsFor={(source) => {
+              const r = rRef.current;
+              if (!r || !prog) return [];
+              const mask = source === 'area' ? areaMask(pattern.width, pattern.height, areaRects()) : new Uint8Array(pattern.width * pattern.height).fill(1);
+              return areaCounts(r.idx, prog.done, mask, palette.length, r.half);
+            }}
+            version={(prog?.version ?? 0) * 1000 + areaItems.length}
+            hasArea={areaItems.length > 0}
+            initialSource={orgSource}
+            onChooseArea={openArea}
+            onPick={(k) => {
+              choose(k);
+              setSheet(null);
+            }}
+            onToast={setToast}
             onClose={() => setSheet(null)}
           />
         )}
@@ -687,6 +741,7 @@ export function Viewer({ stored, settings, dark, env, onSettings, onImport, onOp
             stash={stash}
             onToast={setToast}
             onShop={beginShop}
+            onOrganizer={() => openOrganizer('area')}
             sort={settings.threadSort}
             onSort={(threadSort) => onSettings({ threadSort })}
             onPick={(k) => {
@@ -750,7 +805,10 @@ export function Viewer({ stored, settings, dark, env, onSettings, onImport, onOp
           <div class="threadbar">
             <span class="sw" style={{ background: css(sel.rgb), color: inkOf(sel.rgb) }}>{symbols[selected]}</span>
             <span class="tb-text" title={sel.name}>
-              <b>{sel.code}</b> · {left(selected) ? `${t.left} ${plural(left(selected))}` : t.allDone}
+              <b>{sel.code}</b>
+              {slotOf.has(sel.code.toUpperCase()) && <span class="slot-pill">{t.orgSlotBadge(slotOf.get(sel.code.toUpperCase())!)}</span>}
+              {' · '}
+              {left(selected) ? `${t.left} ${plural(left(selected))}` : t.allDone}
             </span>
             <button class="primary small" onClick={goNearby} title={t.nearbyTitle}>
               <Icon name="target" /> {t.nearby}
@@ -803,7 +861,7 @@ export function Viewer({ stored, settings, dark, env, onSettings, onImport, onOp
             </button>
           </div>
         )}
-        <Strip palette={palette} order={order} selected={selected} finished={finished} onPick={(k) => choose(k === selected ? null : k)} />
+        <Strip palette={palette} order={order} selected={selected} finished={finished} slotOf={slotOf} onPick={(k) => choose(k === selected ? null : k)} />
         <nav class="toolbar">
           <ToolButton icon="eye" label={t.tabView} active={sheet === 'view'} onClick={() => toggleSheet('view')} />
           <ToolButton icon="grid" label={t.tabGrid} active={sheet === 'grid'} onClick={() => toggleSheet('grid')} />
@@ -830,6 +888,7 @@ function Strip(p: {
   order: number[];
   selected: number | null;
   finished(k: number): boolean;
+  slotOf: Map<string, number>;
   onPick(k: number): void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
@@ -846,6 +905,7 @@ function Strip(p: {
           <button key={k} data-k={k} class={`chip${k === p.selected ? ' on' : ''}`} onClick={() => p.onPick(k)} title={`${c.code} ${c.name}`}>
             <span class="sw" style={{ background: css(c.rgb), color: inkOf(c.rgb) }}>{p.finished(k) && <Icon name="check" size={16} />}</span>
             <span class="code">{c.code}</span>
+            {p.slotOf.has(c.code.toUpperCase()) && <span class="chip-slot">{p.slotOf.get(c.code.toUpperCase())}</span>}
           </button>
         );
       })}

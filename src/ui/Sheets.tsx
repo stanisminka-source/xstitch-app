@@ -10,7 +10,7 @@ import { Icon } from './Icon';
 import { haveAmount, haveText, listFileName, listPdfData, needToBuy, stashKey, type ListRow, type Stash } from '../store/stash';
 import { exportListPdf } from '../pdf/exportList';
 
-export type SheetName = 'view' | 'grid' | 'threads' | 'more' | 'progress' | 'area' | 'stash' | 'shop';
+export type SheetName = 'view' | 'grid' | 'threads' | 'more' | 'progress' | 'area' | 'stash' | 'shop' | 'organizer';
 
 const MODES: ViewMode[] = ['colorSymbol', 'color', 'symbol', 'coloredSymbol', 'selectedOnly', 'stitched'];
 
@@ -117,6 +117,7 @@ interface ThreadsProps {
   size: { width: number; height: number };
   onFabric(f: FabricChoice): void;
   onArea(): void;
+  onOrganizer(): void;
   title: string;
   stash: Stash;
   onStash(): void;
@@ -220,6 +221,9 @@ export function ThreadsSheet(p: ThreadsProps) {
         </p>
         <button class="seg area-btn" onClick={p.onArea}>
           <Icon name="area" /> {t.areaOpen}
+        </button>
+        <button class="seg" onClick={p.onOrganizer}>
+          <Icon name="org" /> {t.orgOpen}
         </button>
       </div>
       <div class="fabric-bar">

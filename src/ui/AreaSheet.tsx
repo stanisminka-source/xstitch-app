@@ -20,13 +20,14 @@ interface Props {
   stash: Stash;
   onToast(msg: string): void;
   onShop(rows: ListRow[]): void;
+  onOrganizer(): void;
   onPick(k: number): void;
   onClose(): void;
 }
 
 const fmt = (v: number) => (v < 0.1 ? '0,1' : v.toFixed(1).replace('.', ','));
 
-export function AreaSheet({ rows, palette, symbols, fabric, sort, onSort, title, stash, onToast, onShop, onPick, onClose }: Props) {
+export function AreaSheet({ rows, palette, symbols, fabric, sort, onSort, title, stash, onToast, onShop, onOrganizer, onPick, onClose }: Props) {
   const [onlyLeft, setOnlyLeft] = useState(true);
   const fab = fabricById(fabric.fabric);
   // для покупки удобнее по возрастанию номера; «по количеству» — как в общем списке ниток
@@ -80,6 +81,11 @@ export function AreaSheet({ rows, palette, symbols, fabric, sort, onSort, title,
         {list.length > 0 && (
           <button class="seg" onClick={exportList} disabled={!buy}>
             <Icon name="share" /> {t.listExport}
+          </button>
+        )}
+        {list.length > 0 && (
+          <button class="seg" onClick={onOrganizer}>
+            <Icon name="org" /> {t.orgOpenArea}
           </button>
         )}
         {buy > 0 && (

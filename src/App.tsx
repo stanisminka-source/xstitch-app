@@ -119,7 +119,7 @@ export function App() {
 
   const deletePattern = async (id: string) => {
     await db.deletePattern(id);
-    await Promise.all([db.del(`view:${id}`), db.del(`sel:${id}`), db.del(`done:${id}`), db.del(`meta:${id}`), db.del(`fabric:${id}`), db.del(`area:${id}`)]);
+    await Promise.all([db.del(`view:${id}`), db.del(`sel:${id}`), db.del(`done:${id}`), db.del(`meta:${id}`), db.del(`fabric:${id}`), db.del(`area:${id}`), db.del(`org:${id}`)]);
     if (current?.id === id) {
       const list = await db.listPatterns();
       if (list.length) await openPattern(list[0].id);
