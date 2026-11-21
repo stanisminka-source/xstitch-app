@@ -81,6 +81,19 @@ export function Viewer({ stored, settings, dark, env, onSettings, onImport, onOp
     setStash(s);
     db.set('stash', s);
   };
+  // ——— «пока не покупать редкие нитки»: порог общий для всех схем ———
+  const [minCrosses, setMinCrosses] = useState(0);
+  useEffect(() => {
+    db.get('minCrosses').then((v) => {
+      const n = Number(v);
+      if (Number.isInteger(n) && n >= 0 && n <= 300) setMinCrosses(n);
+    });
+  }, []);
+  const updateMinCrosses = (n: number) => {
+    setMinCrosses(n);
+    db.set('minCrosses', n);
+  };
+
   // ——— органайзер: число мест общее, раскладка — своя у каждой схемы ———
   const [orgSlots, setOrgSlots] = useState(20);
   const [org, setOrg] = useState<Organizer | null>(null);
@@ -594,8 +607,9 @@ export function Viewer({ stored, settings, dark, env, onSettings, onImport, onOp
     saveNow.current();
     setTick((n) => n + 1);
   };
-  const areaRects = (): Rect[] =>
-    areaItems.flatMap((i) => (i.kind === 'rect' ? [i.rect] : sheetInfo.sheets.filter((s) => s.page === i.page)));
+  const rectsOf = (items: AreaItem[]): Rect[] =>
+    items.flatMap((i) => (i.kind === 'rect' ? [i.rect] : sheetInfo.sheets.filter((s) => s.page === i.page)));
+  const areaRects = (): Rect[] => rectsOf(areaItems);
   const areaRows = useMemo(() => {
     const r = rRef.current;
     if (!r || !prog || (!area && sheet !== 'area')) return [];
@@ -676,6 +690,8 @@ export function Viewer({ stored, settings, dark, env, onSettings, onImport, onOp
             stash={stash}
             onStash={() => setSheet('stash')}
             onToast={setToast}
+            minCrosses={minCrosses}
+            onMinCrosses={updateMinCrosses}
             onShop={beginShop}
             shopOpen={!!shop}
             onResumeShop={() => setSheet('shop')}
@@ -698,13 +714,16 @@ export function Viewer({ stored, settings, dark, env, onSettings, onImport, onOp
             onSlots={updateOrgSlots}
             saved={org}
             onSave={updateOrg}
-            countsFor={(source) => {
+            countsFor={(source, saved) => {
               const r = rRef.current;
               if (!r || !prog) return [];
-              const mask = source === 'area' ? areaMask(pattern.width, pattern.height, areaRects()) : new Uint8Array(pattern.width * pattern.height).fill(1);
+              const rects = saved ? rectsOf(saved as AreaItem[]) : areaRects();
+              const mask = source === 'area' ? areaMask(pattern.width, pattern.height, rects) : new Uint8Array(pattern.width * pattern.height).fill(1);
               return areaCounts(r.idx, prog.done, mask, palette.length, r.half);
             }}
-            version={(prog?.version ?? 0) * 1000 + areaItems.length}
+            version={prog?.version ?? 0}
+            area={areaItems}
+            areaKey={JSON.stringify(areaItems)}
             hasArea={areaItems.length > 0}
             initialSource={orgSource}
             onChooseArea={openArea}
@@ -742,6 +761,8 @@ export function Viewer({ stored, settings, dark, env, onSettings, onImport, onOp
             onToast={setToast}
             onShop={beginShop}
             onOrganizer={() => openOrganizer('area')}
+            minCrosses={minCrosses}
+            onMinCrosses={updateMinCrosses}
             sort={settings.threadSort}
             onSort={(threadSort) => onSettings({ threadSort })}
             onPick={(k) => {

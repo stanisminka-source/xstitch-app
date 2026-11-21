@@ -6,6 +6,7 @@ import { compareCodes, crossUnits, fabricById, skeins, skeinsToBuy, type AreaRow
 import type { ThreadSort } from '../store/settings';
 import { plural, t } from '../strings';
 import { Icon } from './Icon';
+import { MinCrosses } from './Sheets';
 import { haveAmount, listFileName, listPdfData, needToBuy, stashKey, type ListRow, type Stash } from '../store/stash';
 import { exportListPdf } from '../pdf/exportList';
 
@@ -21,13 +22,15 @@ interface Props {
   onToast(msg: string): void;
   onShop(rows: ListRow[]): void;
   onOrganizer(): void;
+  minCrosses: number;
+  onMinCrosses(n: number): void;
   onPick(k: number): void;
   onClose(): void;
 }
 
 const fmt = (v: number) => (v < 0.1 ? '0,1' : v.toFixed(1).replace('.', ','));
 
-export function AreaSheet({ rows, palette, symbols, fabric, sort, onSort, title, stash, onToast, onShop, onOrganizer, onPick, onClose }: Props) {
+export function AreaSheet({ rows, palette, symbols, fabric, sort, onSort, title, stash, onToast, onShop, onOrganizer, minCrosses, onMinCrosses, onPick, onClose }: Props) {
   const [onlyLeft, setOnlyLeft] = useState(true);
   const fab = fabricById(fabric.fabric);
   // для покупки удобнее по возрастанию номера; «по количеству» — как в общем списке ниток
@@ -40,7 +43,11 @@ export function AreaSheet({ rows, palette, symbols, fabric, sort, onSort, title,
   const haveOf = (k: number) => stash[stashKey(palette[k].brand, palette[k].code)];
   const useStash = Object.keys(stash).length > 0;
   // с запасами — сколько докупить; без них — по целому мотку каждого цвета, как раньше
-  const buyOf = (r: (typeof list)[0]) => (useStash ? needToBuy(need(r), haveAmount(haveOf(r.k))) : skeinsToBuy(crossUnits(r.n, r.h), fab.count, fabric.strands));
+  const rawBuy = (r: (typeof list)[0]) => (useStash ? needToBuy(need(r), haveAmount(haveOf(r.k))) : skeinsToBuy(crossUnits(r.n, r.h), fab.count, fabric.strands));
+  // редкие нитки (меньше порога крестиков на участке) пока не покупаем
+  const deferred = (r: (typeof list)[0]) => minCrosses > 0 && r.n < minCrosses;
+  const buyOf = (r: (typeof list)[0]) => (deferred(r) ? 0 : rawBuy(r));
+  const deferredCount = list.filter((r) => deferred(r) && rawBuy(r) > 0).length;
   const buy = list.reduce((s, r) => s + buyOf(r), 0);
   const buyRows = (): ListRow[] =>
     list.filter((r) => buyOf(r) > 0).map((r) => ({ code: palette[r.k].code, name: palette[r.k].name, rgb: palette[r.k].rgb, need: need(r), have: haveOf(r.k), buy: buyOf(r) }));
@@ -77,7 +84,13 @@ export function AreaSheet({ rows, palette, symbols, fabric, sort, onSort, title,
         <p class="muted small fabric-info">
           {t.areaTotals(plural(crosses), list.length)} · {t.areaFabric(fab.label, t.strands(fabric.strands))}
         </p>
-        {list.length > 0 && <p class="small fabric-info">{useStash ? t.areaBuyStash(buy) : t.areaBuy(buy)}</p>}
+        {list.length > 0 && <MinCrosses value={minCrosses} onChange={onMinCrosses} />}
+        {list.length > 0 && (
+          <p class="small fabric-info">
+            {useStash ? t.areaBuyStash(buy) : t.areaBuy(buy)}
+            {deferredCount > 0 && ` ${t.deferred(deferredCount, minCrosses)}`}
+          </p>
+        )}
         {list.length > 0 && (
           <button class="seg" onClick={exportList} disabled={!buy}>
             <Icon name="share" /> {t.listExport}
@@ -98,7 +111,7 @@ export function AreaSheet({ rows, palette, symbols, fabric, sort, onSort, title,
         {list.map((r) => {
           const c = palette[r.k];
           return (
-            <button key={r.k} class="thread" onClick={() => onPick(r.k)}>
+            <button key={r.k} class={`thread${deferred(r) ? ' deferred' : ''}`} onClick={() => onPick(r.k)}>
               <span class="sw" style={{ background: css(c.rgb), color: inkOf(c.rgb) }}>{symbols[r.k]}</span>
               <span class="code">{c.code}</span>
               <span class="name">{c.name}</span>
@@ -106,7 +119,7 @@ export function AreaSheet({ rows, palette, symbols, fabric, sort, onSort, title,
                 {plural(r.n)} {t.crosses}
                 {r.h ? `, ${t.halves(plural(r.h))}` : ''}
               </span>
-              <span class="skeins">{t.areaSkeins(fmt(skeins(crossUnits(r.n, r.h), fab.count, fabric.strands)))}</span>
+              <span class="skeins">{deferred(r) ? t.deferredShort : t.areaSkeins(fmt(skeins(crossUnits(r.n, r.h), fab.count, fabric.strands)))}</span>
             </button>
           );
         })}

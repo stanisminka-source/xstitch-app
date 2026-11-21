@@ -18,10 +18,13 @@ interface Props {
   onSlots(n: number): void;
   saved: Organizer | null;
   onSave(o: Organizer | null): void;
-  /** Крестики по цветам для всей схемы или выбранного участка. */
-  countsFor(source: OrgSource): AreaRow[];
+  /** Крестики по цветам: для всей схемы, выбранного сейчас участка или участка, сохранённого с органайзером. */
+  countsFor(source: OrgSource, area?: unknown[]): AreaRow[];
   /** Меняется, когда меняются отметки — чтобы пересчитать. */
   version: number;
+  /** Выбранный сейчас участок и его «отпечаток» — по нему видно, что участок поменялся. */
+  area: unknown[];
+  areaKey: string;
   hasArea: boolean;
   initialSource: OrgSource;
   onChooseArea(): void;
@@ -31,8 +34,9 @@ interface Props {
 }
 
 export function OrganizerSheet(p: Props) {
-  // открыли «для участка», а разложен органайзер для всей схемы (или наоборот) — сразу предлагаем новый
-  const [editing, setEditing] = useState(!p.saved || p.saved.source !== p.initialSource);
+  // открыли «для участка», а разложен органайзер для всей схемы, другого участка (или наоборот) — сразу предлагаем новый
+  const areaChanged = !!p.saved && p.saved.source === 'area' && p.saved.areaKey !== p.areaKey;
+  const [editing, setEditing] = useState(!p.saved || p.saved.source !== p.initialSource || (p.initialSource === 'area' && areaChanged));
   const [source, setSource] = useState<OrgSource>(p.initialSource);
   const [basis, setBasis] = useState<OrgBasis>(p.saved?.basis ?? 'left');
   const [showRest, setShowRest] = useState(false);
@@ -42,13 +46,24 @@ export function OrganizerSheet(p: Props) {
   // при просмотре разложенного органайзера считаем по тому, как его раскладывали
   const src = editing ? source : (p.saved?.source ?? 'all');
   const bas = editing ? basis : (p.saved?.basis ?? 'left');
-  const rows = useMemo(() => (src === 'area' && !p.hasArea ? [] : p.countsFor(src)), [src, p.version, p.hasArea]);
+  // разложенный для участка органайзер считаем по тому участку, для которого раскладывали
+  const savedArea = !editing && p.saved?.source === 'area' ? p.saved.area : undefined;
+  const rows = useMemo(
+    () => (src === 'area' && !savedArea && !p.hasArea ? [] : p.countsFor(src, savedArea)),
+    [src, p.version, p.areaKey, editing, p.saved],
+  );
   const list = useMemo(() => ranked(rows, bas, codeOf, compareCodes), [rows, bas]);
   const nOf = useMemo(() => new Map(rows.map((r) => [r.k, amount(r, bas)])), [rows, bas]);
   const plan = propose(list, p.slots);
 
   const save = () => {
-    p.onSave({ codes: plan.placed.map((x) => codeOf(x.k)), source, basis, at: Date.now() });
+    p.onSave({
+      codes: plan.placed.map((x) => codeOf(x.k)),
+      source,
+      basis,
+      at: Date.now(),
+      ...(source === 'area' ? { area: p.area, areaKey: p.areaKey } : {}),
+    });
     setEditing(false);
   };
 
@@ -116,6 +131,20 @@ export function OrganizerSheet(p: Props) {
             {t.orgSavedInfo(new Date(org.at).toLocaleDateString('ru-RU'), org.source === 'area' ? t.orgSourceArea : t.orgSourceAll)}
             {free.length > 0 && ` ${t.orgFree(free.length)}`}
           </p>
+          {areaChanged && (
+            <p class="small fabric-info org-warn">
+              {t.orgAreaChanged}{' '}
+              <button
+                class="seg"
+                onClick={() => {
+                  setSource('area');
+                  setEditing(true);
+                }}
+              >
+                {t.orgForNewArea}
+              </button>
+            </p>
+          )}
           <button class="seg" onClick={() => setEditing(true)}>
             <Icon name="undo" /> {t.orgRedo}
           </button>

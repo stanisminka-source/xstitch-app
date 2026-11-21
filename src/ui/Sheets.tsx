@@ -122,6 +122,9 @@ interface ThreadsProps {
   stash: Stash;
   onStash(): void;
   onToast(msg: string): void;
+  /** Пока не покупать нитки, которых нужно меньше стольких крестиков (0 — покупать все). */
+  minCrosses: number;
+  onMinCrosses(n: number): void;
   /** Начать покупку по списку «К покупке». */
   onShop(rows: ListRow[]): void;
   /** Есть незаконченная покупка — её можно продолжить. */
@@ -149,8 +152,12 @@ export function ThreadsSheet(p: ThreadsProps) {
     const halvesLeft = c.count ? (p.halves[k] * left) / c.count : 0;
     return skeins(crossUnits(left, halvesLeft), fab.count, p.fabric.strands);
   };
-  const buyLeft = (k: number) => needToBuy(needLeft(k), haveAmount(have(k)));
+  const rawBuy = (k: number) => needToBuy(needLeft(k), haveAmount(have(k)));
+  // редкие нитки (меньше порога крестиков) пока откладываем
+  const deferred = (k: number) => p.minCrosses > 0 && p.left(k) < p.minCrosses;
+  const buyLeft = (k: number) => (deferred(k) ? 0 : rawBuy(k));
   const shown = mode === 'buy' ? p.order.filter((k) => buyLeft(k) > 0) : p.order;
+  const deferredColors = p.order.filter((k) => deferred(k) && rawBuy(k) > 0);
   const rows = shown.filter((k) => !query || p.palette[k].code.toLowerCase().includes(query));
   const buyTotal = p.order.reduce((n, k) => n + buyLeft(k), 0);
   const buyColors = p.order.filter((k) => buyLeft(k) > 0).length;
@@ -247,9 +254,11 @@ export function ThreadsSheet(p: ThreadsProps) {
             <Icon name="bag" /> {t.shopResume}
           </button>
         )}
+        {mode === 'buy' && <MinCrosses value={p.minCrosses} onChange={p.onMinCrosses} />}
         {mode === 'buy' && (
           <p class="small fabric-info">
             {buyColors ? t.buySummary(buyTotal, buyColors) : t.buyNothing}
+            {deferredColors.length > 0 && ` ${t.deferred(deferredColors.length, p.minCrosses)}`}
             {!Object.keys(p.stash).length && ` ${t.buyNoStash}`}
           </p>
         )}
@@ -399,5 +408,22 @@ export function MoreSheet(p: MoreProps) {
         </section>
       </div>
     </div>
+  );
+}
+
+/** Бегунок «пока не покупать редкие нитки»: нитки, которых меньше N крестиков, откладываются. */
+export function MinCrosses({ value, onChange }: { value: number; onChange(n: number): void }) {
+  return (
+    <label class="min-crosses">
+      <span>{value > 0 ? t.minCrossesOn(value) : t.minCrossesOff}</span>
+      <input
+        type="range"
+        min="0"
+        max="300"
+        step="5"
+        value={value}
+        onInput={(e) => onChange(Number((e.currentTarget as HTMLInputElement).value))}
+      />
+    </label>
   );
 }

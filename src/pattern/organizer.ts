@@ -15,6 +15,9 @@ export interface Organizer {
   source: OrgSource;
   basis: OrgBasis;
   at: number;
+  /** Для участка: какой участок был выбран, когда раскладывали (чтобы считать по нему же). */
+  area?: unknown[];
+  areaKey?: string;
 }
 
 export interface OrgPick {
@@ -39,6 +42,7 @@ export function normalizeOrganizer(raw: unknown): Organizer | null {
     source: o.source === 'area' ? 'area' : 'all',
     basis: o.basis === 'all' ? 'all' : 'left',
     at: Number(o.at) || 0,
+    ...(Array.isArray(o.area) ? { area: o.area, areaKey: typeof o.areaKey === 'string' ? o.areaKey : JSON.stringify(o.area) } : {}),
   };
 }
 
