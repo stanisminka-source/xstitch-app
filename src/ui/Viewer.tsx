@@ -612,16 +612,23 @@ export function Viewer({ stored, settings, dark, env, onSettings, onImport, onOp
   const areaRects = (): Rect[] => rectsOf(areaItems);
   const areaRows = useMemo(() => {
     const r = rRef.current;
-    if (!r || !prog || (!area && sheet !== 'area')) return [];
+    if (!r || !prog || (!area && sheet !== 'area' && sheet !== 'organizer')) return [];
     return areaCounts(r.idx, prog.done, areaMask(pattern.width, pattern.height, areaRects()), palette.length, r.half);
   }, [areaItems, area, sheet, prog?.version]);
   const areaCrosses = areaRows.reduce((n, r) => n + r.total, 0);
-  const openArea = () => {
+  // выбор участка, начатый из органайзера, заканчивается кнопкой «К органайзеру»
+  const [areaForOrg, setAreaForOrg] = useState(false);
+  const openArea = (forOrganizer = false) => {
     setSheet(null);
     setMarking(false);
     setArea(true);
-    setToast(sheetInfo.fromPdf ? t.areaHint : `${t.areaHint}. ${t.sheetsApprox}`);
+    setAreaForOrg(forOrganizer);
+    const hint = forOrganizer ? t.areaHintOrg : t.areaHint;
+    setToast(sheetInfo.fromPdf ? hint : `${hint}. ${t.sheetsApprox}`);
   };
+  const areaLabel = areaItems.length
+    ? t.areaSummary(areaItems.filter((i) => i.kind === 'sheet').length, areaItems.filter((i) => i.kind === 'rect').length, plural(areaCrosses))
+    : t.areaEmpty;
   const updateFabric = (f: FabricChoice) => {
     setFabric(f);
     db.set(`fabric:${id}`, f);
@@ -684,7 +691,7 @@ export function Viewer({ stored, settings, dark, env, onSettings, onImport, onOp
             fabric={fabric}
             size={{ width: pattern.width, height: pattern.height }}
             onFabric={updateFabric}
-            onArea={openArea}
+            onArea={() => openArea()}
             onOrganizer={() => openOrganizer(org?.source ?? 'all')}
             title={pattern.title}
             stash={stash}
@@ -726,7 +733,8 @@ export function Viewer({ stored, settings, dark, env, onSettings, onImport, onOp
             areaKey={JSON.stringify(areaItems)}
             hasArea={areaItems.length > 0}
             initialSource={orgSource}
-            onChooseArea={openArea}
+            onChooseArea={() => openArea(true)}
+            areaLabel={areaLabel}
             onPick={(k) => {
               choose(k);
               setSheet(null);
@@ -838,21 +846,38 @@ export function Viewer({ stored, settings, dark, env, onSettings, onImport, onOp
         )}
         {area && (
           <div class="areabar">
-            <span class="ab-text">
-              {areaItems.length
-                ? t.areaSummary(areaItems.filter((i) => i.kind === 'sheet').length, areaItems.filter((i) => i.kind === 'rect').length, plural(areaCrosses))
-                : t.areaEmpty}
-            </span>
+            <span class="ab-text">{areaLabel}</span>
             <button class="seg" disabled={!areaItems.length} onClick={() => setAreaItems((it) => it.slice(0, -1))}>
               <Icon name="undo" /> {t.areaUndo}
             </button>
             <button class="seg" disabled={!areaItems.length} onClick={() => setAreaItems([])}>
               {t.areaClear}
             </button>
-            <button class="primary small" disabled={!areaItems.length} onClick={() => setSheet('area')}>
-              {t.areaCount}
-            </button>
-            <button class="icon-btn" onClick={() => setArea(false)} aria-label={t.close}>
+            {areaForOrg ? (
+              <button
+                class="primary small"
+                disabled={!areaItems.length}
+                onClick={() => {
+                  setArea(false);
+                  setAreaForOrg(false);
+                  openOrganizer('area');
+                }}
+              >
+                <Icon name="org" /> {t.areaToOrg}
+              </button>
+            ) : (
+              <button class="primary small" disabled={!areaItems.length} onClick={() => setSheet('area')}>
+                {t.areaCount}
+              </button>
+            )}
+            <button
+              class="icon-btn"
+              onClick={() => {
+                setArea(false);
+                setAreaForOrg(false);
+              }}
+              aria-label={t.close}
+            >
               <Icon name="x" />
             </button>
           </div>

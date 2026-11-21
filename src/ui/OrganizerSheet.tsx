@@ -27,7 +27,10 @@ interface Props {
   areaKey: string;
   hasArea: boolean;
   initialSource: OrgSource;
+  /** Перейти к выбору участка на схеме (оттуда — кнопкой обратно в органайзер). */
   onChooseArea(): void;
+  /** Что выбрано сейчас: «Листов: 1 · 5 481 кр.». */
+  areaLabel: string;
   onPick(k: number): void;
   onToast(msg: string): void;
   onClose(): void;
@@ -148,6 +151,11 @@ export function OrganizerSheet(p: Props) {
           <button class="seg" onClick={() => setEditing(true)}>
             <Icon name="undo" /> {t.orgRedo}
           </button>
+          {org.source === 'area' && (
+            <button class="seg" onClick={p.onChooseArea}>
+              <Icon name="area" /> {t.orgChangeArea}
+            </button>
+          )}
           <button class="seg" onClick={exportPdf}>
             <Icon name="share" /> {t.listExport}
           </button>
@@ -215,6 +223,15 @@ export function OrganizerSheet(p: Props) {
           </p>
         ) : (
           <p class="small fabric-info">
+            {source === 'area' && (
+              <>
+                {t.orgAreaNow(p.areaLabel)}{' '}
+                <button class="seg" onClick={p.onChooseArea}>
+                  <Icon name="area" /> {t.orgChangeArea}
+                </button>
+                <br />
+              </>
+            )}
             {list.length ? t.orgCoverage(plan.placed.length, Math.round(plan.coverage * 100)) : t.areaNothing}
             {plan.rest.length > 0 && ` ${t.orgRest(plan.rest.length)}`}
           </p>
