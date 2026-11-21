@@ -8,6 +8,9 @@ import { blockCells, lineCells, patchCells, percent, Progress, type Op } from '.
 import { BackupError, backupFileName, emptyMeta, logDelta, makeBackup, mergeDays, normalizeMeta, readBackup, REMIND_EVERY, type Meta } from '../progress/backup';
 import { ProgressSheet } from './ProgressSheet';
 import { AreaSheet } from './AreaSheet';
+import { StashSheet } from './StashSheet';
+import { normalizeStash, type Stash } from '../store/stash';
+import type { ShareResult } from '../lib/share';
 import { areaCounts, areaMask, compareCodes, defaultChoice, halvesByColor, sheetsOf, snapRect, type FabricChoice, type Rect } from '../pattern/threads';
 
 /** Что выбрано для расчёта ниток: целые листы и обведённые участки, в порядке добавления. */
@@ -65,6 +68,18 @@ export function Viewer({ stored, settings, dark, env, onSettings, onImport, onOp
 
   // ——— канва и участок для расчёта ниток ———
   const [fabric, setFabric] = useState<FabricChoice>(() => defaultChoice(pattern));
+  // ——— мои нитки (общие для всех схем) ———
+  const [stash, setStash] = useState<Stash>({});
+  useEffect(() => {
+    db.get('stash').then((v) => setStash(normalizeStash(v)));
+  }, []);
+  const updateStash = (s: Stash) => {
+    setStash(s);
+    db.set('stash', s);
+  };
+  const onShared = (r: ShareResult) => {
+    if (r !== 'cancelled') setToast(t.listSaved);
+  };
   const sheetInfo = useMemo(() => sheetsOf(pattern), [pattern]);
   const [area, setArea] = useState(false);
   const [areaItems, setAreaItems] = useState<AreaItem[]>([]);
@@ -346,7 +361,7 @@ export function Viewer({ stored, settings, dark, env, onSettings, onImport, onOp
       },
       onTap: (px, py) => {
         const hit = r.hit(px, py);
-        setSheet((s) => (s === 'threads' || s === 'more' || s === 'progress' ? null : s));
+        setSheet((s) => (s === 'threads' || s === 'more' || s === 'progress' || s === 'stash' ? null : s));
         if (!hit || hit.color < 0) return;
         choose(hit.color === selectedRef.current ? null : hit.color);
       },
@@ -609,6 +624,10 @@ export function Viewer({ stored, settings, dark, env, onSettings, onImport, onOp
             size={{ width: pattern.width, height: pattern.height }}
             onFabric={updateFabric}
             onArea={openArea}
+            title={pattern.title}
+            stash={stash}
+            onStash={() => setSheet('stash')}
+            onShared={onShared}
             sort={settings.threadSort}
             onSort={(threadSort) => onSettings({ threadSort })}
             onPick={(k) => {
@@ -618,12 +637,16 @@ export function Viewer({ stored, settings, dark, env, onSettings, onImport, onOp
             onClose={() => setSheet(null)}
           />
         )}
+        {sheet === 'stash' && <StashSheet stash={stash} palette={palette} onChange={updateStash} onClose={() => setSheet('threads')} />}
         {sheet === 'area' && (
           <AreaSheet
             rows={areaRows}
             palette={palette}
             symbols={symbols}
             fabric={fabric}
+            title={pattern.title}
+            stash={stash}
+            onShared={onShared}
             sort={settings.threadSort}
             onSort={(threadSort) => onSettings({ threadSort })}
             onPick={(k) => {
@@ -670,6 +693,7 @@ export function Viewer({ stored, settings, dark, env, onSettings, onImport, onOp
             onSettings={onSettings}
             onImport={onImport}
             onProgress={() => setSheet('progress')}
+            onStash={() => setSheet('stash')}
             onOpen={(pid) => {
               setSheet(null);
               onOpen(pid);

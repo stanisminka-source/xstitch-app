@@ -215,3 +215,17 @@ button.pill { cursor: pointer; }
 .areabar { display: flex; align-items: center; gap: 6px; margin: 8px 10px 0; flex-wrap: wrap; }
 .areabar .ab-text { flex: 1; min-width: 140px; font-size: 13px; }
 .areabar .seg:disabled { opacity: .4; }
+
+/* мои нитки */
+.stash-add { display: flex; gap: 8px; width: 100%; }
+.stash-add input {
+  flex: 1; min-width: 0; height: 36px; padding: 0 12px; border-radius: 10px;
+  border: 1px solid var(--line); background: var(--surface); -webkit-user-select: text; user-select: text;
+}
+.stash-row { cursor: default; }
+.stash-row .stepper { display: inline-flex; align-items: center; gap: 2px; }
+.stash-row .stepper .icon-btn { width: 30px; height: 30px; font-size: 18px; color: var(--text); background: var(--surface-2); }
+.stash-row .stepper b { min-width: 22px; text-align: center; }
+.stash-row .low { display: inline-flex; align-items: center; gap: 4px; font-size: 13px; color: var(--muted); }
+.stash-row .low input { width: 18px; height: 18px; accent-color: var(--accent); }
+.thread .have { color: var(--accent-ink); }

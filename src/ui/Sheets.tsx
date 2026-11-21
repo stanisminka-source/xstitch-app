@@ -5,10 +5,12 @@ import type { PaletteColor } from '../pattern/format';
 import { db } from '../store/db';
 import { LINES_MODES, PROGRESS_MODES, type GridMode, type LinesMode, type ProgressMode, type Settings, type ThreadSort, type ViewMode } from '../store/settings';
 import { plural, t } from '../strings';
-import { crossUnits, FABRICS, fabricById, finishedSize, recommendedStrands, skeinsToBuy, type FabricChoice } from '../pattern/threads';
+import { crossUnits, FABRICS, fabricById, finishedSize, recommendedStrands, skeins, skeinsToBuy, type FabricChoice } from '../pattern/threads';
 import { Icon } from './Icon';
+import { haveAmount, haveText, listFileName, listText, needToBuy, stashKey, type ListRow, type Stash } from '../store/stash';
+import { shareFile, type ShareResult } from '../lib/share';
 
-export type SheetName = 'view' | 'grid' | 'threads' | 'more' | 'progress' | 'area';
+export type SheetName = 'view' | 'grid' | 'threads' | 'more' | 'progress' | 'area' | 'stash';
 
 const MODES: ViewMode[] = ['colorSymbol', 'color', 'symbol', 'coloredSymbol', 'selectedOnly', 'stitched'];
 
@@ -115,6 +117,10 @@ interface ThreadsProps {
   size: { width: number; height: number };
   onFabric(f: FabricChoice): void;
   onArea(): void;
+  title: string;
+  stash: Stash;
+  onStash(): void;
+  onShared(r: ShareResult): void;
   sort: ThreadSort;
   onSort(s: ThreadSort): void;
   onPick(k: number | null): void;
@@ -123,12 +129,43 @@ interface ThreadsProps {
 
 export function ThreadsSheet(p: ThreadsProps) {
   const [q, setQ] = useState('');
+  const [mode, setMode] = useState<'all' | 'buy'>('all');
   const query = q.trim().toLowerCase();
-  const rows = p.order.filter((k) => !query || p.palette[k].code.toLowerCase().includes(query));
   const fab = fabricById(p.fabric.fabric);
   const cm = finishedSize(p.size.width, p.size.height, fab.count);
   const toBuy = (k: number) => skeinsToBuy(crossUnits(p.palette[k].count, p.halves[k]), fab.count, p.fabric.strands);
   const total = p.order.reduce((n, k) => n + toBuy(k), 0);
+  const have = (k: number) => p.stash[stashKey(p.palette[k].brand, p.palette[k].code)];
+  // к покупке: сколько нужно на ещё не вышитое минус то, что уже есть дома
+  const needLeft = (k: number) => {
+    const c = p.palette[k];
+    const left = p.left(k);
+    const halvesLeft = c.count ? (p.halves[k] * left) / c.count : 0;
+    return skeins(crossUnits(left, halvesLeft), fab.count, p.fabric.strands);
+  };
+  const buyLeft = (k: number) => needToBuy(needLeft(k), haveAmount(have(k)));
+  const shown = mode === 'buy' ? p.order.filter((k) => buyLeft(k) > 0) : p.order;
+  const rows = shown.filter((k) => !query || p.palette[k].code.toLowerCase().includes(query));
+  const buyTotal = p.order.reduce((n, k) => n + buyLeft(k), 0);
+  const buyColors = p.order.filter((k) => buyLeft(k) > 0).length;
+
+  const exportList = async () => {
+    const listRows: ListRow[] = shown.map((k) => ({
+      code: p.palette[k].code,
+      name: p.palette[k].name,
+      need: mode === 'buy' ? needLeft(k) : skeins(crossUnits(p.palette[k].count, p.halves[k]), fab.count, p.fabric.strands),
+      have: have(k),
+      buy: mode === 'buy' ? buyLeft(k) : toBuy(k),
+    }));
+    const text = listText({
+      title: `${t.listPattern}: ${p.title}`,
+      heading: mode === 'buy' ? t.listBuyHeading : t.listAllHeading,
+      notes: [`${t.fabric}: ${fab.label}, ${t.strands(p.fabric.strands)}`, ...(mode === 'buy' ? [t.listBuyNote] : [])],
+      rows: listRows,
+      mode,
+    });
+    p.onShared(await shareFile(listFileName(p.title, mode === 'buy' ? 'покупки' : 'нитки'), text));
+  };
   return (
     <div class="sheet tall">
       <div class="sheet-head">
@@ -174,6 +211,24 @@ export function ThreadsSheet(p: ThreadsProps) {
           <Icon name="area" /> {t.areaOpen}
         </button>
       </div>
+      <div class="fabric-bar">
+        <div class="segs">
+          <button class={`seg${mode === 'all' ? ' on' : ''}`} onClick={() => setMode('all')}>{t.listAll}</button>
+          <button class={`seg${mode === 'buy' ? ' on' : ''}`} onClick={() => setMode('buy')}>{t.listBuy}</button>
+        </div>
+        <button class="seg" onClick={p.onStash}>
+          <Icon name="box" /> {t.stashTitle}
+        </button>
+        <button class="seg" onClick={exportList} disabled={!shown.length}>
+          <Icon name="share" /> {t.listExport}
+        </button>
+        {mode === 'buy' && (
+          <p class="small fabric-info">
+            {buyColors ? t.buySummary(buyTotal, buyColors) : t.buyNothing}
+            {!Object.keys(p.stash).length && ` ${t.buyNoStash}`}
+          </p>
+        )}
+      </div>
       <div class="thread-list">
         {rows.map((k) => {
           const c = p.palette[k];
@@ -181,7 +236,10 @@ export function ThreadsSheet(p: ThreadsProps) {
             <button key={k} class={`thread${k === p.selected ? ' on' : ''}${p.finished(k) ? ' finished' : ''}`} onClick={() => p.onPick(k === p.selected ? null : k)}>
               <span class="sw" style={{ background: css(c.rgb), color: inkOf(c.rgb) }}>{p.symbols[k]}</span>
               <span class="code">{c.code}</span>
-              <span class="name">{c.name}</span>
+              <span class="name">
+                {c.name}
+                {have(k) && <span class="have"> · {haveText(have(k))}</span>}
+              </span>
               <span class="count">
                 {p.finished(k) ? (
                   <>
@@ -193,11 +251,11 @@ export function ThreadsSheet(p: ThreadsProps) {
                   `${plural(c.count)} ${t.crosses}${p.halves[k] ? `, ${t.halves(plural(p.halves[k]))}` : ''}`
                 )}
               </span>
-              <span class="skeins">{t.skeinsShort(toBuy(k))}</span>
+              <span class="skeins">{t.skeinsShort(mode === 'buy' ? buyLeft(k) : toBuy(k))}</span>
             </button>
           );
         })}
-        {!rows.length && <p class="muted pad">{t.nothingFound}</p>}
+        {!rows.length && <p class="muted pad">{mode === 'buy' && !query ? t.buyNothing : t.nothingFound}</p>}
       </div>
     </div>
   );
@@ -210,6 +268,7 @@ interface MoreProps {
   onSettings(patch: Partial<Settings>): void;
   onImport(): void;
   onProgress(): void;
+  onStash(): void;
   onOpen(id: string): void;
   onDelete(id: string): void;
   onClose(): void;
@@ -262,6 +321,13 @@ export function MoreSheet(p: MoreProps) {
           <h3>{t.progressSection}</h3>
           <button class="seg" onClick={p.onProgress}>
             <Icon name="chart" /> {t.progressOpen}
+          </button>
+        </section>
+
+        <section>
+          <h3>{t.stashTitle}</h3>
+          <button class="seg" onClick={p.onStash}>
+            <Icon name="box" /> {t.stashOpen}
           </button>
         </section>
 

@@ -6,6 +6,8 @@ import { compareCodes, crossUnits, fabricById, skeins, skeinsToBuy, type AreaRow
 import type { ThreadSort } from '../store/settings';
 import { plural, t } from '../strings';
 import { Icon } from './Icon';
+import { haveAmount, listFileName, listText, needToBuy, stashKey, type Stash } from '../store/stash';
+import { shareFile, type ShareResult } from '../lib/share';
 
 interface Props {
   rows: AreaRow[];
@@ -14,13 +16,16 @@ interface Props {
   fabric: FabricChoice;
   sort: ThreadSort;
   onSort(s: ThreadSort): void;
+  title: string;
+  stash: Stash;
+  onShared(r: ShareResult): void;
   onPick(k: number): void;
   onClose(): void;
 }
 
 const fmt = (v: number) => (v < 0.1 ? '0,1' : v.toFixed(1).replace('.', ','));
 
-export function AreaSheet({ rows, palette, symbols, fabric, sort, onSort, onPick, onClose }: Props) {
+export function AreaSheet({ rows, palette, symbols, fabric, sort, onSort, title, stash, onShared, onPick, onClose }: Props) {
   const [onlyLeft, setOnlyLeft] = useState(true);
   const fab = fabricById(fabric.fabric);
   // для покупки удобнее по возрастанию номера; «по количеству» — как в общем списке ниток
@@ -29,7 +34,22 @@ export function AreaSheet({ rows, palette, symbols, fabric, sort, onSort, onPick
     .filter((r) => r.n > 0)
     .sort((a, b) => (sort === 'count' ? b.n - a.n : compareCodes(palette[a.k].code, palette[b.k].code)));
   const crosses = list.reduce((s, r) => s + r.n, 0);
-  const buy = list.reduce((s, r) => s + skeinsToBuy(crossUnits(r.n, r.h), fab.count, fabric.strands), 0);
+  const need = (r: (typeof list)[0]) => skeins(crossUnits(r.n, r.h), fab.count, fabric.strands);
+  const haveOf = (k: number) => stash[stashKey(palette[k].brand, palette[k].code)];
+  const useStash = Object.keys(stash).length > 0;
+  // с запасами — сколько докупить; без них — по целому мотку каждого цвета, как раньше
+  const buyOf = (r: (typeof list)[0]) => (useStash ? needToBuy(need(r), haveAmount(haveOf(r.k))) : skeinsToBuy(crossUnits(r.n, r.h), fab.count, fabric.strands));
+  const buy = list.reduce((s, r) => s + buyOf(r), 0);
+  const exportList = async () => {
+    const text = listText({
+      title: `${t.listPattern}: ${title}`,
+      heading: t.listAreaHeading,
+      notes: [`${t.fabric}: ${fab.label}, ${t.strands(fabric.strands)}`, onlyLeft ? t.listBuyNote : t.areaAll],
+      rows: list.filter((r) => buyOf(r) > 0).map((r) => ({ code: palette[r.k].code, name: palette[r.k].name, need: need(r), have: haveOf(r.k), buy: buyOf(r) })),
+      mode: 'buy',
+    });
+    onShared(await shareFile(listFileName(title, 'участок-покупки'), text));
+  };
   return (
     <div class="sheet tall">
       <div class="sheet-head">
@@ -49,7 +69,12 @@ export function AreaSheet({ rows, palette, symbols, fabric, sort, onSort, onPick
         <p class="muted small fabric-info">
           {t.areaTotals(plural(crosses), list.length)} · {t.areaFabric(fab.label, t.strands(fabric.strands))}
         </p>
-        {list.length > 0 && <p class="small fabric-info">{t.areaBuy(buy)}</p>}
+        {list.length > 0 && <p class="small fabric-info">{useStash ? t.areaBuyStash(buy) : t.areaBuy(buy)}</p>}
+        {list.length > 0 && (
+          <button class="seg" onClick={exportList} disabled={!buy}>
+            <Icon name="share" /> {t.listExport}
+          </button>
+        )}
       </div>
       <div class="thread-list">
         {list.map((r) => {
