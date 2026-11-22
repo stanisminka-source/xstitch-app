@@ -53,15 +53,19 @@ export function Viewer({ stored, settings, dark, env, onSettings, onImport, onOp
   const { pattern, id } = stored;
   const rawPalette = pattern.palette;
   // предпросмотр замены: клетки цвета k показываем цветом нитки to
-  const [preview, setPreview] = useState<{ k: number; to: string } | null>(null);
+  // черновик замен из «Сверки цветов»: цвет k → нитка; смотрим всё вместе и переключаем «как сейчас / с заменами»
+  const [draft, setDraft] = useState<Record<number, string>>({});
+  const [previewOn, setPreviewOn] = useState(false);
+  const [showAfter, setShowAfter] = useState(true);
+  const preview = previewOn;
   const shownRgb = useMemo(
     () =>
       rawPalette.map((c, k): RGB => {
-        if (preview?.k === k) return dmcThread(preview.to)?.rgb ?? c.rgb;
+        if (previewOn && showAfter && draft[k]) return dmcThread(draft[k])?.rgb ?? c.rgb;
         if (settings.colors === 'thread') return dmcThread(c.code)?.rgb ?? c.rgb;
         return c.rgb;
       }),
-    [rawPalette, settings.colors, preview],
+    [rawPalette, settings.colors, previewOn, showAfter, draft],
   );
   const palette = useMemo(
     () => rawPalette.map((c, k) => (shownRgb[k] === c.rgb ? c : { ...c, rgb: [shownRgb[k][0], shownRgb[k][1], shownRgb[k][2]] as [number, number, number] })),
@@ -667,6 +671,14 @@ export function Viewer({ stored, settings, dark, env, onSettings, onImport, onOp
     db.set(`fabric:${id}`, f);
   };
 
+  const applyDraft = () => {
+    const next = { ...subs };
+    for (const [k, to] of Object.entries(draft)) next[rawPalette[Number(k)].code] = to;
+    setDraft({});
+    setPreviewOn(false);
+    onSubs(next, 'colors');
+  };
+
   const toggleMarking = () => {
     setSheet(null);
     setArea(false);
@@ -758,11 +770,22 @@ export function Viewer({ stored, settings, dark, env, onSettings, onImport, onOp
             stash={stash}
             colors={settings.colors}
             onColors={(colors) => onSettings({ colors })}
-            onPreview={(k, to) => {
-              setPreview({ k, to });
+            draft={draft}
+            onDraft={(k, to) =>
+              setDraft((d) => {
+                const next = { ...d };
+                if (to) next[k] = to;
+                else delete next[k];
+                return next;
+              })
+            }
+            onShowDraft={() => {
+              setShowAfter(true);
+              setPreviewOn(true);
               setSheet(null);
             }}
-            onAccept={(from, to) => onSubs({ ...subs, [from]: to }, 'colors')}
+            onApplyDraft={applyDraft}
+            onClearDraft={() => setDraft({})}
             onRevert={(from) => {
               const next = { ...subs };
               delete next[from];
@@ -904,24 +927,37 @@ export function Viewer({ stored, settings, dark, env, onSettings, onImport, onOp
             </button>
           </div>
         )}
-        {preview && (
+        {previewOn && (
           <div class="areabar preview-bar">
             <span class="ab-text">
-              {t.previewText(rawPalette[preview.k].code, preview.to, dmcThread(preview.to)?.name ?? '')}
+              {t.previewGroup(
+                Object.entries(draft)
+                  .map(([k, to]) => `${rawPalette[Number(k)].code}→${to}`)
+                  .join(', '),
+              )}
             </span>
-            <button class="primary small" onClick={() => onSubs({ ...subs, [rawPalette[preview.k].code]: preview.to }, 'colors')}>
-              <Icon name="check" /> {t.previewAccept}
+            <div class="segs ab-flip">
+              <button class={`seg${!showAfter ? ' on' : ''}`} onClick={() => setShowAfter(false)}>{t.previewBefore}</button>
+              <button class={`seg${showAfter ? ' on' : ''}`} onClick={() => setShowAfter(true)}>{t.previewAfter}</button>
+            </div>
+            <div class="segs ab-flip">
+              <span class="muted small">{t.previewOthers}</span>
+              <button class={`seg${settings.colors === 'pdf' ? ' on' : ''}`} onClick={() => onSettings({ colors: 'pdf' })}>{t.colorsModes.pdf}</button>
+              <button class={`seg${settings.colors === 'thread' ? ' on' : ''}`} onClick={() => onSettings({ colors: 'thread' })}>{t.colorsModes.thread}</button>
+            </div>
+            <button class="primary small" disabled={!Object.keys(draft).length} onClick={applyDraft}>
+              <Icon name="check" /> {t.previewApplyAll}
             </button>
             <button
               class="seg"
               onClick={() => {
-                setPreview(null);
+                setPreviewOn(false);
                 setSheet('colors');
               }}
             >
-              {t.previewOther}
+              {t.previewEdit}
             </button>
-            <button class="icon-btn" onClick={() => setPreview(null)} aria-label={t.close}>
+            <button class="icon-btn" onClick={() => setPreviewOn(false)} aria-label={t.close}>
               <Icon name="x" />
             </button>
           </div>

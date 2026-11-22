@@ -18,9 +18,12 @@ interface Props {
   stash: Stash;
   colors: ColorsMode;
   onColors(m: ColorsMode): void;
-  /** Посмотреть на схеме, как будет с другой ниткой. */
-  onPreview(k: number, to: string): void;
-  onAccept(from: string, to: string): void;
+  /** Черновик замен: цвет k → нитка. Выбирается по одной нитке, смотрится и применяется вместе. */
+  draft: Record<number, string>;
+  onDraft(k: number, to: string | null): void;
+  onShowDraft(): void;
+  onApplyDraft(): void;
+  onClearDraft(): void;
   onRevert(from: string): void;
   onClose(): void;
 }
@@ -49,6 +52,25 @@ export function ColorsSheet(p: Props) {
           <button class={`seg${p.colors === 'thread' ? ' on' : ''}`} onClick={() => p.onColors('thread')}>{t.colorsThread}</button>
         </div>
       </div>
+      {Object.keys(p.draft).length > 0 && (
+        <div class="fabric-bar draft-bar">
+          <p class="small fabric-info">
+            <b>{t.draftCount(Object.keys(p.draft).length)}</b>{' '}
+            {Object.entries(p.draft)
+              .map(([k, to]) => `${p.palette[Number(k)].code} → ${to}`)
+              .join(', ')}
+          </p>
+          <button class="primary small" onClick={p.onShowDraft}>
+            <Icon name="eye" /> {t.draftShow}
+          </button>
+          <button class="seg" onClick={p.onApplyDraft}>
+            <Icon name="check" /> {t.previewApplyAll}
+          </button>
+          <button class="seg" onClick={p.onClearDraft}>
+            {t.draftClear}
+          </button>
+        </div>
+      )}
       <div class="thread-list colors-list">
         {replaced.length > 0 && <h4 class="colors-h">{t.colorsReplaced}</h4>}
         {replaced.map(([from, to]) => {
@@ -93,7 +115,13 @@ export function ColorsSheet(p: Props) {
                 {sugg.map((s) => {
                   const tags = [inPattern.has(s.code.toUpperCase()) && t.colorsTagInPattern, p.stash[stashKey('DMC', s.code)] && t.colorsTagHave].filter(Boolean);
                   return (
-                    <button key={s.code} class="cc-chip" onClick={() => p.onPreview(ch.k, s.code)} title={s.name}>
+                    <button
+                      key={s.code}
+                      class={`cc-chip${p.draft[ch.k] === s.code ? ' on' : ''}`}
+                      onClick={() => p.onDraft(ch.k, p.draft[ch.k] === s.code ? null : s.code)}
+                      title={s.name}
+                      aria-pressed={p.draft[ch.k] === s.code}
+                    >
                       <Sw rgb={s.rgb} />
                       <span>
                         <b>{s.code}</b>

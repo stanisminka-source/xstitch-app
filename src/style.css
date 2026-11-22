@@ -284,3 +284,7 @@ button.pill { cursor: pointer; }
 .cc-sugg { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 6px; }
 .cc-chip { display: inline-flex; align-items: center; gap: 6px; padding: 3px 9px 3px 3px; border-radius: 999px; background: var(--surface-2); font-size: 13px; }
 .preview-bar { background: var(--accent-soft); border-radius: 12px; padding: 6px 8px; }
+.cc-chip.on { background: var(--accent); color: #fff; }
+.cc-chip.on .muted { color: rgba(255,255,255,.85); }
+.draft-bar { background: var(--accent-soft); }
+.preview-bar .ab-flip { display: flex; align-items: center; gap: 4px; }
