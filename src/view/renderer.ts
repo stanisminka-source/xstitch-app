@@ -105,7 +105,7 @@ export class SchemeRenderer {
   readonly vp: Viewport;
   /** Индекс цвета в палитре для каждой клетки, −1 — пусто. */
   readonly idx: Int16Array;
-  readonly rgb: RGB[];
+  rgb: RGB[];
   /** Полукрестики: 1 — в клетке полукрест «/». */
   readonly half: Uint8Array;
   /** Пользователь сейчас двигает схему — не перерисовываем плитки под новый масштаб. */
@@ -208,6 +208,15 @@ export class SchemeRenderer {
 
   invalidate(): void {
     if (!this.raf) this.raf = requestAnimationFrame(() => this.draw());
+  }
+
+  /** Другие цвета клеток (настоящие цвета ниток, предпросмотр замены) — по индексу палитры. */
+  setColors(rgb: RGB[]): void {
+    if (rgb.length === this.rgb.length && rgb.every((c, k) => c[0] === this.rgb[k][0] && c[1] === this.rgb[k][1] && c[2] === this.rgb[k][2])) return;
+    this.rgb = rgb.map((c) => [c[0], c[1], c[2]] as RGB);
+    this.atlases.clear();
+    this.prepareStyle();
+    this.invalidate();
   }
 
   /** Отметки в этих клетках изменились — перерисовываем только их. */

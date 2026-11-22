@@ -6,6 +6,7 @@ import { compareCodes, crossUnits, fabricById, skeins, skeinsToBuy, type AreaRow
 import type { ThreadSort } from '../store/settings';
 import { plural, t } from '../strings';
 import { Icon } from './Icon';
+import { dmcThread } from '../pattern/catalog';
 import { MinCrosses } from './Sheets';
 import { haveAmount, listFileName, listPdfData, needToBuy, stashKey, type ListRow, type Stash } from '../store/stash';
 import { exportListPdf } from '../pdf/exportList';
@@ -50,7 +51,7 @@ export function AreaSheet({ rows, palette, symbols, fabric, sort, onSort, title,
   const deferredCount = list.filter((r) => deferred(r) && rawBuy(r) > 0).length;
   const buy = list.reduce((s, r) => s + buyOf(r), 0);
   const buyRows = (): ListRow[] =>
-    list.filter((r) => buyOf(r) > 0).map((r) => ({ code: palette[r.k].code, name: palette[r.k].name, rgb: palette[r.k].rgb, need: need(r), have: haveOf(r.k), buy: buyOf(r) }));
+    list.filter((r) => buyOf(r) > 0).map((r) => ({ code: palette[r.k].code, name: palette[r.k].name, rgb: dmcThread(palette[r.k].code)?.rgb ?? palette[r.k].rgb, need: need(r), have: haveOf(r.k), buy: buyOf(r) }));
   const exportList = async () => {
     const data = listPdfData({
       title: `${t.listPattern}: ${title}`,

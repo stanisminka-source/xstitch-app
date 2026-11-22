@@ -12,6 +12,8 @@ export interface PaletteColor {
   symbol: string;
   rgb: [number, number, number];
   count: number;
+  /** Если нитку заменили: какой номер стоял в схеме. */
+  replaced?: string;
 }
 
 /** Линия бэкстича: от узла сетки (x1, y1) до узла (x2, y2).

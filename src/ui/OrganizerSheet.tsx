@@ -8,6 +8,7 @@ import { exportListPdf } from '../pdf/exportList';
 import { haveText, listFileName, stashKey, type Stash } from '../store/stash';
 import { plural, t } from '../strings';
 import { Icon } from './Icon';
+import { dmcThread } from '../pattern/catalog';
 
 interface Props {
   palette: PaletteColor[];
@@ -83,7 +84,7 @@ export function OrganizerSheet(p: Props) {
       rows: codes.map((code, i) => {
         const k = kOf.get(code.toUpperCase());
         const c = k === undefined ? null : p.palette[k];
-        return { code, name: c?.name ?? '', rgb: c?.rgb ?? null, cells: [plural(k === undefined ? 0 : (nOf.get(k) ?? 0)), `№ ${i + 1}`] };
+        return { code, name: c?.name ?? '', rgb: c ? (dmcThread(code)?.rgb ?? c.rgb) : null, cells: [plural(k === undefined ? 0 : (nOf.get(k) ?? 0)), `№ ${i + 1}`] };
       }),
       total: t.orgPdfTotal(codes.length, p.slots),
       footer: `Smile & Stitch · ${new Date().toLocaleDateString('ru-RU')}`,

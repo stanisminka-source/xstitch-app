@@ -12,6 +12,8 @@ const PATHS: Record<string, string> = {
   check: 'M5 12l5 5 9-10',
   area: 'M4 4h6v6H4Z M14 4h6v6h-6Z M4 14h6v6H4Z M14 14h6v6h-6Z',
   org: 'M4 5h16 M6 5v14 M10 5v14 M14 5v14 M18 5v14 M4 19h16',
+  arrow: 'M5 12h14 M13 6l6 6-6 6',
+  palette: 'M12 3a9 9 0 1 0 0 18c1.2 0 1.6-1 1.2-2-.5-1 0-2 1.3-2H17a4 4 0 0 0 4-4c0-5.5-4-10-9-10Z M7.5 11h.01 M10 7h.01 M15 7.5h.01',
   bag: 'M5 8h14l-1 12H6Z M9 8V6a3 3 0 0 1 6 0v2',
   box: 'M4 8l8-4 8 4v8l-8 4-8-4Z M4 8l8 4 8-4 M12 12v8',
   share: 'M12 15V4 M8 8l4-4 4 4 M6 12H5v8h14v-8h-1',

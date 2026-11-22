@@ -3,6 +3,11 @@ import type { AppEnv } from '../App';
 import { css, inkOf } from '../lib/color';
 import { byDistance, findRegions, type Region } from '../pattern/regions';
 import { assignSymbols } from '../pattern/symbols';
+import type { Pattern } from '../pattern/format';
+import type { RGB } from '../lib/color';
+import { dmcThread } from '../pattern/catalog';
+import { colorChecks, type Subs } from '../pattern/subs';
+import { ColorsSheet } from './ColorsSheet';
 import { db, type StoredPattern } from '../store/db';
 import { blockCells, lineCells, patchCells, percent, Progress, type Op } from '../progress/progress';
 import { BackupError, backupFileName, emptyMeta, logDelta, makeBackup, mergeDays, normalizeMeta, readBackup, REMIND_EVERY, type Meta } from '../progress/backup';
@@ -37,14 +42,35 @@ interface Props {
   onImport(): void;
   onOpen(id: string): void;
   onDelete(id: string): void;
+  /** Схема до замен ниток (по ней — символы, чтобы они не менялись от замен). */
+  base: Pattern;
+  subs: Subs;
+  onSubs(s: Subs, reopen: SheetName | null): void;
+  initialSheet: SheetName | null;
 }
 
-export function Viewer({ stored, settings, dark, env, onSettings, onImport, onOpen, onDelete }: Props) {
+export function Viewer({ stored, settings, dark, env, onSettings, onImport, onOpen, onDelete, base, subs, onSubs, initialSheet }: Props) {
   const { pattern, id } = stored;
-  const palette = pattern.palette;
-  const symbols = useMemo(() => assignSymbols(palette.map((c) => c.count)), [pattern]);
+  const rawPalette = pattern.palette;
+  // предпросмотр замены: клетки цвета k показываем цветом нитки to
+  const [preview, setPreview] = useState<{ k: number; to: string } | null>(null);
+  const shownRgb = useMemo(
+    () =>
+      rawPalette.map((c, k): RGB => {
+        if (preview?.k === k) return dmcThread(preview.to)?.rgb ?? c.rgb;
+        if (settings.colors === 'thread') return dmcThread(c.code)?.rgb ?? c.rgb;
+        return c.rgb;
+      }),
+    [rawPalette, settings.colors, preview],
+  );
+  const palette = useMemo(
+    () => rawPalette.map((c, k) => (shownRgb[k] === c.rgb ? c : { ...c, rgb: [shownRgb[k][0], shownRgb[k][1], shownRgb[k][2]] as [number, number, number] })),
+    [rawPalette, shownRgb],
+  );
+  const checks = useMemo(() => colorChecks(rawPalette), [rawPalette]);
+  const symbols = useMemo(() => assignSymbols(base.palette.map((c) => c.count)), [base]);
   const [selected, setSelected] = useState<number | null>(null);
-  const [sheet, setSheet] = useState<SheetName | null>(null);
+  const [sheet, setSheet] = useState<SheetName | null>(initialSheet);
   const [toast, setToast] = useState<string | null>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -150,13 +176,15 @@ export function Viewer({ stored, settings, dark, env, onSettings, onImport, onOp
 
   useWakeLock(settings.wakeLock);
 
-  const style = { mode: settings.mode, grid: settings.grid, dim: settings.dim, selected, dark, progress: settings.progress, lines: settings.lines };
+  // при предпросмотре замены показываем схему в полную силу: бледные «невышитые» клетки мешают сравнить цвет
+  const style = { mode: settings.mode, grid: settings.grid, dim: settings.dim, selected, dark, progress: preview ? ('off' as const) : settings.progress, lines: settings.lines };
 
   // Создаём отрисовщик, восстанавливаем место и выбранную нить.
   useEffect(() => {
     const canvas = canvasRef.current!;
     const wrap = wrapRef.current!;
     const r = new SchemeRenderer(canvas, pattern, symbols, style);
+    r.setColors(shownRgb as RGB[]);
     rRef.current = r;
     const prog = new Progress(r.idx, palette.length);
     // общий массив: отрисовщик видит отметки сразу, без копирования
@@ -443,8 +471,12 @@ export function Viewer({ stored, settings, dark, env, onSettings, onImport, onOp
   }, []);
 
   useEffect(() => {
+    rRef.current?.setColors(shownRgb as RGB[]);
+  }, [shownRgb]);
+
+  useEffect(() => {
     rRef.current?.setStyle(style);
-  }, [settings.mode, settings.grid, settings.dim, selected, dark, settings.progress, settings.lines]);
+  }, [settings.mode, settings.grid, settings.dim, selected, dark, settings.progress, settings.lines, preview]);
 
   useEffect(() => {
     rRef.current?.invalidate();
@@ -515,7 +547,8 @@ export function Viewer({ stored, settings, dark, env, onSettings, onImport, onOp
     return halvesByColor(idx, pattern.half, palette.length);
   }, [pattern]);
   const order = useMemo(() => {
-    const idx = palette.map((_, i) => i);
+    // цвета, все клетки которых отданы другой нитке (замена), в списках не показываем
+    const idx = palette.map((_, i) => i).filter((i) => palette[i].count > 0);
     if (settings.threadSort === 'count') return idx.sort((a, b) => palette[b].count - palette[a].count);
     return idx.sort((a, b) => compareCodes(palette[a].code, palette[b].code));
   }, [palette, settings.threadSort]);
@@ -673,6 +706,8 @@ export function Viewer({ stored, settings, dark, env, onSettings, onImport, onOp
             onChange={(mode) => onSettings({ mode })}
             progress={settings.progress}
             onProgress={(progress) => onSettings({ progress })}
+            colors={settings.colors}
+            onColors={(colors) => onSettings({ colors })}
             hasLines={pattern.backstitch.length > 0}
             lines={settings.lines}
             onLines={(lines) => onSettings({ lines })}
@@ -693,6 +728,8 @@ export function Viewer({ stored, settings, dark, env, onSettings, onImport, onOp
             onFabric={updateFabric}
             onArea={() => openArea()}
             onOrganizer={() => openOrganizer(org?.source ?? 'all')}
+            colorWarnings={checks.length}
+            onColors={() => setSheet('colors')}
             title={pattern.title}
             stash={stash}
             onStash={() => setSheet('stash')}
@@ -707,6 +744,29 @@ export function Viewer({ stored, settings, dark, env, onSettings, onImport, onOp
             onPick={(k) => {
               choose(k);
               setSheet(null);
+            }}
+            onClose={() => setSheet(null)}
+          />
+        )}
+        {sheet === 'colors' && (
+          <ColorsSheet
+            checks={checks}
+            palette={rawPalette}
+            base={base.palette}
+            symbols={symbols}
+            subs={subs}
+            stash={stash}
+            colors={settings.colors}
+            onColors={(colors) => onSettings({ colors })}
+            onPreview={(k, to) => {
+              setPreview({ k, to });
+              setSheet(null);
+            }}
+            onAccept={(from, to) => onSubs({ ...subs, [from]: to }, 'colors')}
+            onRevert={(from) => {
+              const next = { ...subs };
+              delete next[from];
+              onSubs(next, 'colors');
             }}
             onClose={() => setSheet(null)}
           />
@@ -841,6 +901,28 @@ export function Viewer({ stored, settings, dark, env, onSettings, onImport, onOp
             </span>
             <button class="primary small" onClick={goNearby} title={t.nearbyTitle}>
               <Icon name="target" /> {t.nearby}
+            </button>
+          </div>
+        )}
+        {preview && (
+          <div class="areabar preview-bar">
+            <span class="ab-text">
+              {t.previewText(rawPalette[preview.k].code, preview.to, dmcThread(preview.to)?.name ?? '')}
+            </span>
+            <button class="primary small" onClick={() => onSubs({ ...subs, [rawPalette[preview.k].code]: preview.to }, 'colors')}>
+              <Icon name="check" /> {t.previewAccept}
+            </button>
+            <button
+              class="seg"
+              onClick={() => {
+                setPreview(null);
+                setSheet('colors');
+              }}
+            >
+              {t.previewOther}
+            </button>
+            <button class="icon-btn" onClick={() => setPreview(null)} aria-label={t.close}>
+              <Icon name="x" />
             </button>
           </div>
         )}

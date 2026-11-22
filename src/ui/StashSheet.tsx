@@ -74,7 +74,8 @@ export function StashSheet({ stash, palette, onChange, onClose }: Props) {
       </div>
       <div class="thread-list">
         {items.map(([key, it]) => {
-          const c = known.get(key) ?? dmcThread(it.code);
+          // образец — настоящий цвет нитки; цвет из схемы (он бывает подогнан под картинку) — только если нитки нет в таблице
+          const c = dmcThread(it.code) ?? known.get(key);
           return (
             <div key={key} class="thread stash-row">
               <span class="sw" style={{ background: c ? css(c.rgb) : 'var(--surface-2)' }} />

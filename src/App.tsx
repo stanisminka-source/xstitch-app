@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'preact/hooks';
+import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { registerSW } from 'virtual:pwa-register';
 import { parsePattern, PatternError } from './pattern/format';
 import { db, patternId, type StoredPattern } from './store/db';
@@ -6,6 +6,8 @@ import { DEFAULT_SETTINGS, normalizeSettings, type Settings } from './store/sett
 import { t } from './strings';
 import { Viewer } from './ui/Viewer';
 import { Logo } from './ui/Logo';
+import { applySubs, normalizeSubs, type Subs } from './pattern/subs';
+import type { SheetName } from './ui/Sheets';
 
 export interface AppEnv {
   offlineReady: boolean;
@@ -32,6 +34,32 @@ function useDarkTheme(theme: Settings['theme']): boolean {
 export function App() {
   const [settings, setSettings] = useState<Settings | null>(null);
   const [current, setCurrent] = useState<StoredPattern | null | undefined>(undefined);
+  // замены ниток в открытой схеме (Сверка цветов) — схема показывается уже с ними
+  const [subs, setSubs] = useState<Subs>({});
+  const [subsFor, setSubsFor] = useState<string | null>(null);
+  const [reopen, setReopen] = useState<SheetName | null>(null);
+  useEffect(() => {
+    if (!current) return;
+    let alive = true;
+    db.get(`subs:${current.id}`)
+      .catch(() => undefined)
+      .then((v) => {
+        if (!alive) return;
+        setSubs(normalizeSubs(v));
+        setSubsFor(current.id);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [current?.id]);
+  const effective = useMemo(() => (current ? applySubs(current.pattern, subs) : null), [current, subs]);
+  const updateSubs = (s: Subs, sheet: SheetName | null) => {
+    if (!current) return;
+    setSubs(s);
+    setReopen(sheet);
+    if (Object.keys(s).length) db.set(`subs:${current.id}`, s);
+    else db.del(`subs:${current.id}`);
+  };
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [env, setEnv] = useState<AppEnv>({ offlineReady: false, persisted: null, update: null });
@@ -119,7 +147,7 @@ export function App() {
 
   const deletePattern = async (id: string) => {
     await db.deletePattern(id);
-    await Promise.all([db.del(`view:${id}`), db.del(`sel:${id}`), db.del(`done:${id}`), db.del(`meta:${id}`), db.del(`fabric:${id}`), db.del(`area:${id}`), db.del(`org:${id}`)]);
+    await Promise.all([db.del(`view:${id}`), db.del(`sel:${id}`), db.del(`done:${id}`), db.del(`meta:${id}`), db.del(`fabric:${id}`), db.del(`area:${id}`), db.del(`org:${id}`), db.del(`subs:${id}`)]);
     if (current?.id === id) {
       const list = await db.listPatterns();
       if (list.length) await openPattern(list[0].id);
@@ -173,9 +201,14 @@ export function App() {
   return (
     <>
       {fileInput}
+      {subsFor === current.id && effective && (
       <Viewer
-        key={current.id}
-        stored={current}
+        key={`${current.id}|${JSON.stringify(subs)}`}
+        stored={{ ...current, pattern: effective }}
+        base={current.pattern}
+        subs={subs}
+        onSubs={updateSubs}
+        initialSheet={reopen}
         settings={settings}
         dark={dark}
         env={env}
@@ -184,6 +217,7 @@ export function App() {
         onOpen={openPattern}
         onDelete={deletePattern}
       />
+      )}
       {error && (
         <div class="toast error" onClick={() => setError(null)}>
           {t.importError}: {error}

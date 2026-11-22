@@ -3,14 +3,15 @@ import type { AppEnv } from '../App';
 import { css, inkOf } from '../lib/color';
 import type { PaletteColor } from '../pattern/format';
 import { db } from '../store/db';
-import { LINES_MODES, PROGRESS_MODES, type GridMode, type LinesMode, type ProgressMode, type Settings, type ThreadSort, type ViewMode } from '../store/settings';
+import { LINES_MODES, PROGRESS_MODES, type ColorsMode, type GridMode, type LinesMode, type ProgressMode, type Settings, type ThreadSort, type ViewMode } from '../store/settings';
 import { plural, t } from '../strings';
 import { crossUnits, FABRICS, fabricById, finishedSize, recommendedStrands, skeins, skeinsToBuy, type FabricChoice } from '../pattern/threads';
 import { Icon } from './Icon';
+import { dmcThread } from '../pattern/catalog';
 import { haveAmount, haveText, listFileName, listPdfData, needToBuy, stashKey, type ListRow, type Stash } from '../store/stash';
 import { exportListPdf } from '../pdf/exportList';
 
-export type SheetName = 'view' | 'grid' | 'threads' | 'more' | 'progress' | 'area' | 'stash' | 'shop' | 'organizer';
+export type SheetName = 'view' | 'grid' | 'threads' | 'more' | 'progress' | 'area' | 'stash' | 'shop' | 'organizer' | 'colors';
 
 const MODES: ViewMode[] = ['colorSymbol', 'color', 'symbol', 'coloredSymbol', 'selectedOnly', 'stitched'];
 
@@ -49,6 +50,8 @@ export function ViewSheet(p: {
   onChange(m: ViewMode): void;
   progress: ProgressMode;
   onProgress(m: ProgressMode): void;
+  colors: ColorsMode;
+  onColors(m: ColorsMode): void;
   /** Переключатель линий — только у схем, где линии есть. */
   hasLines: boolean;
   lines: LinesMode;
@@ -70,6 +73,16 @@ export function ViewSheet(p: {
           {PROGRESS_MODES.map((m) => (
             <button key={m} class={`seg${m === p.progress ? ' on' : ''}`} onClick={() => p.onProgress(m)}>
               {t.progressModes[m]}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div class="sheet-row">
+        <span class="muted small">{t.colorsTitleView}</span>
+        <div class="segs">
+          {(['pdf', 'thread'] as const).map((m) => (
+            <button key={m} class={`seg${m === p.colors ? ' on' : ''}`} onClick={() => p.onColors(m)}>
+              {t.colorsModes[m]}
             </button>
           ))}
         </div>
@@ -118,6 +131,9 @@ interface ThreadsProps {
   onFabric(f: FabricChoice): void;
   onArea(): void;
   onOrganizer(): void;
+  /** Сколько ниток в PDF выглядят не так, как в жизни. */
+  colorWarnings: number;
+  onColors(): void;
   title: string;
   stash: Stash;
   onStash(): void;
@@ -166,7 +182,8 @@ export function ThreadsSheet(p: ThreadsProps) {
     shown.map((k) => ({
       code: p.palette[k].code,
       name: p.palette[k].name,
-      rgb: p.palette[k].rgb,
+      // в списке покупок — настоящий цвет нитки, не цвет из PDF
+      rgb: dmcThread(p.palette[k].code)?.rgb ?? p.palette[k].rgb,
       need: mode === 'buy' ? needLeft(k) : skeins(crossUnits(p.palette[k].count, p.halves[k]), fab.count, p.fabric.strands),
       have: have(k),
       buy: mode === 'buy' ? buyLeft(k) : toBuy(k),
@@ -231,6 +248,10 @@ export function ThreadsSheet(p: ThreadsProps) {
         </button>
         <button class="seg" onClick={p.onOrganizer}>
           <Icon name="org" /> {t.orgOpen}
+        </button>
+        <button class={`seg${p.colorWarnings ? ' warn' : ''}`} onClick={p.onColors}>
+          <Icon name="palette" /> {t.colorsOpen}
+          {p.colorWarnings > 0 && <span class="badge">{p.colorWarnings}</span>}
         </button>
       </div>
       <div class="fabric-bar">

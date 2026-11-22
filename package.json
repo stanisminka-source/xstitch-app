@@ -1,6 +1,6 @@
 {
   "name": "xstitch-app",
-  "version": "0.8.2",
+  "version": "0.9.0",
   "scripts": {
     "dev": "vite --host",
     "build": "tsc --noEmit && vite build",
