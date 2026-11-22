@@ -345,7 +345,12 @@ export async function parsePatternPdf(doc: PdfDoc, ops: PdfOps, onProgress?: Pdf
     // левая линейка — повёрнутые числа; верхняя — строка горизонтальных чисел, в которой их больше всего
     const left: Label[] = words.filter((w) => w.rotated && isNum(w.str)).map((w) => ({ n: Number(w.str), c: -(w.x + w.w / 2) }));
     const numRows = new Map<number, Word[]>();
-    for (const w of words) if (!w.rotated && isNum(w.str)) (numRows.get(Math.round(w.y)) ?? numRows.set(Math.round(w.y), []).get(Math.round(w.y))!).push(w);
+    // шрифт линеек — тот, которым написаны повёрнутые номера слева. Цифры другим шрифтом —
+    // это символы схемы (у больших схем символом бывает и «2»), а не подписи линейки.
+    const fontCount = new Map<string, number>();
+    for (const w of words) if (w.rotated && isNum(w.str)) fontCount.set(w.font, (fontCount.get(w.font) ?? 0) + 1);
+    const rulerFont = [...fontCount.entries()].sort((a, b) => b[1] - a[1])[0]?.[0];
+    for (const w of words) if (!w.rotated && isNum(w.str) && w.font === rulerFont) (numRows.get(Math.round(w.y)) ?? numRows.set(Math.round(w.y), []).get(Math.round(w.y))!).push(w);
     const topRow = [...numRows.values()].sort((a, b) => b.length - a.length || b[0].y - a[0].y)[0];
     if (!topRow || !left.length) continue; // не страница схемы
     const top: Label[] = topRow.map((w) => ({ n: Number(w.str), c: w.x + w.w / 2 }));
@@ -355,7 +360,7 @@ export async function parsePatternPdf(doc: PdfDoc, ops: PdfOps, onProgress?: Pdf
     // символы — горизонтальные, ниже верхней линейки и правее левой, причём не шрифтом
     // колонтитулов («Page 2 …», «(9)») и линеек; среди остальных — самый частый шрифт
     const headY = Math.max(...words.map((w) => w.y));
-    const otherFonts = new Set([...words.filter((w) => Math.abs(w.y - headY) < 1 || isNum(w.str) || /^\(\d+\)$/.test(w.str)).map((w) => w.font)]);
+    const otherFonts = new Set([...words.filter((w) => Math.abs(w.y - headY) < 1 || /^\(\d+\)$/.test(w.str)).map((w) => w.font), ...(rulerFont ? [rulerFont] : [])]);
     const inside = glyphs.filter((g) => !g.rotated && g.y < topY - 2 && g.x > leftX + 2 && !otherFonts.has(g.font));
     const fonts = new Map<string, number>();
     for (const g of inside) fonts.set(`${g.font}|${g.size.toFixed(2)}`, (fonts.get(`${g.font}|${g.size.toFixed(2)}`) ?? 0) + 1);
